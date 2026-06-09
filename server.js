@@ -1,409 +1,414 @@
-/**
- * CURAVIO – Backend (In-Memory, kein SQLite)
- * Node.js + Express + WebSocket + Claude AI
- * Rollen: angehöriger | betreuer | admin
- */
-
 require('dotenv').config();
-const express    = require('express');
-const http       = require('http');
-const WebSocket  = require('ws');
-const bcrypt     = require('bcryptjs');
-const jwt        = require('jsonwebtoken');
-const { v4: uuid } = require('uuid');
-const cors       = require('cors');
-const path       = require('path');
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { WebSocketServer } = require('ws');
+const cors = require('cors');
+const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const { Pool } = require('pg');
 
-// Anthropic KI – optional
-let Anthropic = null;
-try { Anthropic = require('@anthropic-ai/sdk'); } catch {}
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'curavio_dev_secret_2024';
 
-// ─── Setup ───────────────────────────────────────────────────────────────────
-const app    = express();
-const server = http.createServer(app);
-const wss    = new WebSocket.Server({ server });
-const ai     = (Anthropic && process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.startsWith('HIER'))
-               ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
-const JWT    = process.env.JWT_SECRET || 'curavio_dev_secret';
-const PORT   = process.env.PORT || 3000;
+// PostgreSQL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── In-Memory Datenbank ──────────────────────────────────────────────────────
-const DB = {
-  users:    [],
-  patients: [],
-  visits:   [],
-  reports:  [],
-  messages: []
-};
-
-function now() { return new Date().toISOString(); }
-
-function seedDemoData() {
-  const pw = bcrypt.hashSync('curavio123', 10);
-
-  DB.users.push(
-    { id: 'u1', name: 'Thomas Mueller',  email: 'thomas@demo.de',    password: pw, role: 'angehoeriger', phone: '+49 170 1234567', created_at: now() },
-    { id: 'u2', name: 'Maria Kovacs',    email: 'maria@demo.de',     password: pw, role: 'betreuer',     phone: '+49 151 9876543', created_at: now() },
-    { id: 'u3', name: 'Admin Curavio',   email: 'admin@curavio.de',  password: pw, role: 'admin',        phone: '+49 30 1234567',  created_at: now() }
-  );
-
-  DB.patients.push({
-    id: 'p1', name: 'Heinrich Mueller', birthdate: '1946-03-15',
-    address: 'Kantstrasse 42, 10625 Berlin', pflegegrad: 2, kasse: 'AOK Berlin',
-    notes: null, angehoeriger_id: 'u1', created_at: now()
-  });
-
-  const today     = new Date().toISOString().split('T')[0];
-  const lastMonth = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
-
-  DB.visits.push(
-    { id: 'v1', patient_id: 'p1', betreuer_id: 'u2', service: 'Koerperpflege & Medikamente',
-      scheduled_at: today + 'T14:30:00', duration_min: 60, status: 'unterwegs', notes: null, created_at: now() },
-    { id: 'v2', patient_id: 'p1', betreuer_id: 'u2', service: 'Hauswirtschaft & Einkauf',
-      scheduled_at: today + 'T10:00:00', duration_min: 90, status: 'geplant', notes: null, created_at: now() },
-    { id: 'v3', patient_id: 'p1', betreuer_id: 'u2', service: 'Koerperpflege & Medikamente',
-      scheduled_at: lastMonth + 'T14:30:00', duration_min: 60, status: 'abgeschlossen', notes: null, created_at: now() }
-  );
-
-  DB.reports.push({
-    id: 'r1', visit_id: 'v3',
-    content: 'Heinrich war heute in sehr guter Stimmung. Gemeinsamer Spaziergang im Volkspark verlief problemlos.',
-    tasks_done: JSON.stringify(['Koerperpflege', 'Medikamente', 'Spaziergang', 'Mittagessen']),
-    mood: 4, vitals: null,
-    ai_summary: 'Sehr positiver Besuch. Heinrich wirkte ausgeglichen und aktiv. Keine Auffaelligkeiten. Medikamente planmaessig eingenommen.',
-    created_at: now()
-  });
-}
-
-seedDemoData();
-
-// ─── Middleware: JWT-Auth ─────────────────────────────────────────────────────
-function auth(req, res, next) {
-  const h = req.headers.authorization;
-  if (!h) return res.status(401).json({ error: 'Kein Token' });
+// ===== DATENBANK SETUP =====
+async function initDB() {
+  const client = await pool.connect();
   try {
-    req.user = jwt.verify(h.replace('Bearer ', ''), JWT);
-    next();
-  } catch { res.status(401).json({ error: 'Ungültiger Token' }); }
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'angehoeriger',
+        patient_ids TEXT DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS patients (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        address TEXT DEFAULT '',
+        care_level INTEGER DEFAULT 1,
+        betreuer_id VARCHAR(50),
+        angehoerige_ids TEXT DEFAULT '[]',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS visits (
+        id VARCHAR(50) PRIMARY KEY,
+        patient_id VARCHAR(50) NOT NULL,
+        betreuer_id VARCHAR(50) NOT NULL,
+        scheduled_at TIMESTAMP NOT NULL,
+        duration INTEGER DEFAULT 60,
+        status VARCHAR(50) DEFAULT 'geplant',
+        notes TEXT DEFAULT '',
+        services TEXT DEFAULT '[]',
+        location TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS reports (
+        id VARCHAR(50) PRIMARY KEY,
+        visit_id VARCHAR(50),
+        patient_id VARCHAR(50) NOT NULL,
+        betreuer_id VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        ai_summary TEXT DEFAULT '',
+        mood VARCHAR(50) DEFAULT 'gut',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS messages (
+        id VARCHAR(50) PRIMARY KEY,
+        room_id VARCHAR(255) NOT NULL,
+        sender_id VARCHAR(50) NOT NULL,
+        sender_name VARCHAR(255) NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    const { rows } = await client.query('SELECT COUNT(*) FROM users');
+    if (parseInt(rows[0].count) === 0) {
+      await seedDemoData(client);
+    }
+  } finally {
+    client.release();
+  }
 }
 
-function role(...roles) {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role))
-      return res.status(403).json({ error: 'Keine Berechtigung' });
-    next();
-  };
+async function seedDemoData(client) {
+  const pw = await bcrypt.hash('curavio123', 10);
+  await client.query(`
+    INSERT INTO users (id, name, email, password, role, patient_ids) VALUES
+    ('u1', 'Thomas Mueller', 'thomas@demo.de', $1, 'angehoeriger', '["p1"]'),
+    ('u2', 'Maria Kovacs', 'maria@demo.de', $1, 'betreuer', '["p1"]'),
+    ('u3', 'Admin Curavio', 'admin@curavio.de', $1, 'admin', '[]')
+  `, [pw]);
+
+  await client.query(`
+    INSERT INTO patients (id, name, address, care_level, betreuer_id, angehoerige_ids) VALUES
+    ('p1', 'Elisabeth Mueller', 'Hauptstrasse 12, 80333 München', 3, 'u2', '["u1"]')
+  `);
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(10, 0, 0, 0);
+  await client.query(`
+    INSERT INTO visits (id, patient_id, betreuer_id, scheduled_at, duration, status, services) VALUES
+    ('v1', 'p1', 'u2', $1, 90, 'geplant', '["Körperpflege","Medikamente","Gespräch"]')
+  `, [tomorrow]);
+
+  console.log('[DB] Demo-Daten angelegt');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ROUTEN
-// ═══════════════════════════════════════════════════════════════════════════════
+// ===== AUTH MIDDLEWARE =====
+function auth(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Kein Token' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: 'Ungültiger Token' });
+  }
+}
 
-// ─── AUTH ─────────────────────────────────────────────────────────────────────
-
-app.post('/api/auth/login', (req, res) => {
+// ===== AUTH ROUTEN =====
+app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
-
-  const user = DB.users.find(u => u.email === email);
-  if (!user || !bcrypt.compareSync(password, user.password))
-    return res.status(401).json({ error: 'E-Mail oder Passwort falsch' });
-
-  const token = jwt.sign({ id: user.id, name: user.name, role: user.role }, JWT, { expiresIn: '7d' });
-  res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email } });
-});
-
-app.post('/api/auth/register', (req, res) => {
-  const { name, email, password, role = 'angehoeriger', phone } = req.body;
-  if (!name || !email || !password)
-    return res.status(400).json({ error: 'Name, E-Mail und Passwort erforderlich' });
-
-  if (DB.users.find(u => u.email === email))
-    return res.status(409).json({ error: 'E-Mail bereits registriert' });
-
-  const id   = uuid();
-  const hash = bcrypt.hashSync(password, 10);
-  DB.users.push({ id, name, email, password: hash, role, phone: phone || null, created_at: now() });
-
-  const token = jwt.sign({ id, name, role }, JWT, { expiresIn: '7d' });
-  res.status(201).json({ token, user: { id, name, role, email } });
-});
-
-app.get('/api/auth/me', auth, (req, res) => {
-  const user = DB.users.find(u => u.id === req.user.id);
-  if (!user) return res.status(404).json({ error: 'Nicht gefunden' });
-  const { password, ...safe } = user;
-  res.json(safe);
-});
-
-// ─── PATIENTEN ────────────────────────────────────────────────────────────────
-
-app.get('/api/patients', auth, (req, res) => {
-  let patients;
-  if (req.user.role === 'admin') {
-    patients = DB.patients;
-  } else if (req.user.role === 'angehoeriger') {
-    patients = DB.patients.filter(p => p.angehoeriger_id === req.user.id);
-  } else {
-    const myPatientIds = [...new Set(
-      DB.visits.filter(v => v.betreuer_id === req.user.id).map(v => v.patient_id)
-    )];
-    patients = DB.patients.filter(p => myPatientIds.includes(p.id));
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
+    const user = rows[0];
+    if (!user || !await bcrypt.compare(password, user.password)) {
+      return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+    }
+    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email } });
+  } catch (e) {
+    res.status(500).json({ error: 'Server Fehler' });
   }
-  res.json(patients);
 });
 
-app.post('/api/patients', auth, (req, res) => {
-  const { name, birthdate, address, pflegegrad, kasse, notes } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name erforderlich' });
-
-  const id = uuid();
-  const angehoeriger_id = req.user.role === 'angehoeriger' ? req.user.id : req.body.angehoeriger_id;
-  DB.patients.push({ id, name, birthdate: birthdate || null, address: address || null,
-    pflegegrad: pflegegrad || 1, kasse: kasse || 'AOK', notes: notes || null,
-    angehoeriger_id, created_at: now() });
-  res.status(201).json({ id, name });
-});
-
-// ─── BESUCHE ─────────────────────────────────────────────────────────────────
-
-app.get('/api/visits', auth, (req, res) => {
-  let visits = DB.visits;
-
-  if (req.user.role === 'betreuer') {
-    visits = visits.filter(v => v.betreuer_id === req.user.id);
-  } else if (req.user.role === 'angehoeriger') {
-    const myPatientIds = DB.patients.filter(p => p.angehoeriger_id === req.user.id).map(p => p.id);
-    visits = visits.filter(v => myPatientIds.includes(v.patient_id));
+app.post('/api/auth/register', async (req, res) => {
+  const { name, email, password, role } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, E-Mail und Passwort erforderlich' });
+  try {
+    const id = 'u_' + uuidv4().replace(/-/g, '').substring(0, 12);
+    const hashed = await bcrypt.hash(password, 10);
+    await pool.query(
+      'INSERT INTO users (id, name, email, password, role) VALUES ($1,$2,$3,$4,$5)',
+      [id, name, email.toLowerCase(), hashed, role || 'angehoeriger']
+    );
+    res.json({ success: true, message: 'Registrierung erfolgreich' });
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'E-Mail bereits registriert' });
+    res.status(500).json({ error: 'Server Fehler' });
   }
-
-  const enriched = visits.map(v => {
-    const patient = DB.patients.find(p => p.id === v.patient_id);
-    const betreuer = DB.users.find(u => u.id === v.betreuer_id);
-    return { ...v, patient_name: patient ? patient.name : '', betreuer_name: betreuer ? betreuer.name : '' };
-  }).sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
-
-  res.json(enriched);
 });
 
-app.post('/api/visits', auth, (req, res) => {
-  const { patient_id, betreuer_id, service, scheduled_at, duration_min, notes } = req.body;
-  if (!patient_id || !service || !scheduled_at)
-    return res.status(400).json({ error: 'Patient, Service und Datum erforderlich' });
-
-  let assignedBetreuer = betreuer_id;
-  if (!assignedBetreuer) {
-    const available = DB.users.find(u => u.role === 'betreuer');
-    assignedBetreuer = available ? available.id : null;
+app.get('/api/auth/me', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, name, email, role FROM users WHERE id = $1', [req.user.id]);
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: 'Server Fehler' });
   }
-
-  const id = uuid();
-  DB.visits.push({ id, patient_id, betreuer_id: assignedBetreuer, service, scheduled_at,
-    duration_min: duration_min || 60, status: 'geplant', notes: notes || null, created_at: now() });
-
-  res.status(201).json({ id, service, scheduled_at, betreuer_id: assignedBetreuer });
 });
 
-app.patch('/api/visits/:id/status', auth, (req, res) => {
-  const { status } = req.body;
-  const allowed = ['geplant', 'bestaetigt', 'unterwegs', 'angekommen', 'abgeschlossen', 'storniert'];
-  if (!allowed.includes(status))
-    return res.status(400).json({ error: 'Ungültiger Status' });
-
-  const visit = DB.visits.find(v => v.id === req.params.id);
-  if (!visit) return res.status(404).json({ error: 'Besuch nicht gefunden' });
-  visit.status = status;
-
-  broadcast({ type: 'visit_update', visit });
-  res.json({ success: true, status });
+// ===== PATIENTEN =====
+app.get('/api/patients', auth, async (req, res) => {
+  try {
+    let query, params;
+    if (req.user.role === 'admin') {
+      query = 'SELECT * FROM patients ORDER BY name'; params = [];
+    } else if (req.user.role === 'betreuer') {
+      query = 'SELECT * FROM patients WHERE betreuer_id = $1 ORDER BY name'; params = [req.user.id];
+    } else {
+      query = "SELECT * FROM patients WHERE angehoerige_ids LIKE $1 ORDER BY name";
+      params = [`%"${req.user.id}"%`];
+    }
+    const { rows } = await pool.query(query, params);
+    res.json(rows.map(p => ({ ...p, angehoerige_ids: JSON.parse(p.angehoerige_ids || '[]') })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── BERICHTE ─────────────────────────────────────────────────────────────────
+app.post('/api/patients', auth, async (req, res) => {
+  if (!['admin', 'betreuer'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
+  const { name, address, care_level, betreuer_id, notes, angehoerige_ids } = req.body;
+  try {
+    const id = 'p_' + uuidv4().replace(/-/g, '').substring(0, 12);
+    const { rows } = await pool.query(
+      'INSERT INTO patients (id, name, address, care_level, betreuer_id, notes, angehoerige_ids) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [id, name, address || '', care_level || 1, betreuer_id || req.user.id, notes || '', JSON.stringify(angehoerige_ids || [])]
+    );
+    res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-app.get('/api/reports', auth, (req, res) => {
-  let reports = DB.reports;
+app.patch('/api/patients/:id', auth, async (req, res) => {
+  if (!['admin', 'betreuer'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
+  const { name, address, care_level, notes, angehoerige_ids } = req.body;
+  try {
+    const { rows } = await pool.query(
+      'UPDATE patients SET name=COALESCE($1,name), address=COALESCE($2,address), care_level=COALESCE($3,care_level), notes=COALESCE($4,notes), angehoerige_ids=COALESCE($5,angehoerige_ids) WHERE id=$6 RETURNING *',
+      [name, address, care_level, notes, angehoerige_ids ? JSON.stringify(angehoerige_ids) : null, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-  if (req.user.role === 'betreuer') {
-    const myVisitIds = DB.visits.filter(v => v.betreuer_id === req.user.id).map(v => v.id);
-    reports = reports.filter(r => myVisitIds.includes(r.visit_id));
-  } else if (req.user.role === 'angehoeriger') {
-    const myPatientIds = DB.patients.filter(p => p.angehoeriger_id === req.user.id).map(p => p.id);
-    const relVisitIds  = DB.visits.filter(v => myPatientIds.includes(v.patient_id)).map(v => v.id);
-    reports = reports.filter(r => relVisitIds.includes(r.visit_id));
-  }
+// ===== BESUCHE =====
+app.get('/api/visits', auth, async (req, res) => {
+  try {
+    let query, params;
+    if (req.user.role === 'admin') {
+      query = `SELECT v.*, p.name as patient_name, u.name as betreuer_name FROM visits v
+               LEFT JOIN patients p ON v.patient_id = p.id LEFT JOIN users u ON v.betreuer_id = u.id
+               ORDER BY v.scheduled_at DESC`;
+      params = [];
+    } else if (req.user.role === 'betreuer') {
+      query = `SELECT v.*, p.name as patient_name FROM visits v
+               LEFT JOIN patients p ON v.patient_id = p.id
+               WHERE v.betreuer_id = $1 ORDER BY v.scheduled_at DESC`;
+      params = [req.user.id];
+    } else {
+      query = `SELECT v.*, p.name as patient_name, u.name as betreuer_name FROM visits v
+               LEFT JOIN patients p ON v.patient_id = p.id LEFT JOIN users u ON v.betreuer_id = u.id
+               WHERE p.angehoerige_ids LIKE $1 ORDER BY v.scheduled_at DESC`;
+      params = [`%"${req.user.id}"%`];
+    }
+    const { rows } = await pool.query(query, params);
+    res.json(rows.map(v => ({ ...v, services: JSON.parse(v.services || '[]') })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-  const enriched = reports.map(r => {
-    const visit   = DB.visits.find(v => v.id === r.visit_id);
-    const patient = visit ? DB.patients.find(p => p.id === visit.patient_id) : null;
-    const betreuer = visit ? DB.users.find(u => u.id === visit.betreuer_id) : null;
-    return {
-      ...r,
-      tasks_done:   r.tasks_done ? JSON.parse(r.tasks_done) : [],
-      vitals:       r.vitals ? JSON.parse(r.vitals) : null,
-      service:      visit ? visit.service : '',
-      scheduled_at: visit ? visit.scheduled_at : '',
-      patient_name: patient ? patient.name : '',
-      betreuer_name: betreuer ? betreuer.name : ''
-    };
-  }).sort((a, b) => b.created_at.localeCompare(a.created_at));
+app.post('/api/visits', auth, async (req, res) => {
+  const { patient_id, scheduled_at, duration, notes, services, location } = req.body;
+  if (!patient_id || !scheduled_at) return res.status(400).json({ error: 'Patient und Datum erforderlich' });
+  try {
+    const id = 'v_' + uuidv4().replace(/-/g, '').substring(0, 12);
+    const { rows } = await pool.query(
+      'INSERT INTO visits (id, patient_id, betreuer_id, scheduled_at, duration, notes, services, location) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [id, patient_id, req.user.id, scheduled_at, duration || 60, notes || '', JSON.stringify(services || []), location || '']
+    );
+    res.json({ ...rows[0], services: JSON.parse(rows[0].services || '[]') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-  res.json(enriched);
+app.patch('/api/visits/:id/status', auth, async (req, res) => {
+  const { status, notes } = req.body;
+  try {
+    const { rows } = await pool.query(
+      'UPDATE visits SET status=$1, notes=COALESCE($2,notes) WHERE id=$3 RETURNING *',
+      [status, notes, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ ...rows[0], services: JSON.parse(rows[0].services || '[]') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== BERICHTE =====
+app.get('/api/reports', auth, async (req, res) => {
+  try {
+    let query, params;
+    if (req.user.role === 'admin') {
+      query = `SELECT r.*, p.name as patient_name, u.name as betreuer_name FROM reports r
+               LEFT JOIN patients p ON r.patient_id = p.id LEFT JOIN users u ON r.betreuer_id = u.id
+               ORDER BY r.created_at DESC`;
+      params = [];
+    } else if (req.user.role === 'betreuer') {
+      query = `SELECT r.*, p.name as patient_name FROM reports r LEFT JOIN patients p ON r.patient_id = p.id
+               WHERE r.betreuer_id = $1 ORDER BY r.created_at DESC`;
+      params = [req.user.id];
+    } else {
+      query = `SELECT r.*, p.name as patient_name, u.name as betreuer_name FROM reports r
+               LEFT JOIN patients p ON r.patient_id = p.id LEFT JOIN users u ON r.betreuer_id = u.id
+               WHERE p.angehoerige_ids LIKE $1 ORDER BY r.created_at DESC`;
+      params = [`%"${req.user.id}"%`];
+    }
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/reports', auth, async (req, res) => {
-  const { visit_id, content, tasks_done, mood, vitals } = req.body;
-  if (!visit_id || !content)
-    return res.status(400).json({ error: 'Besuch und Inhalt erforderlich' });
-
-  let ai_summary = null;
+  const { patient_id, visit_id, content, mood } = req.body;
+  if (!patient_id || !content) return res.status(400).json({ error: 'Patient und Inhalt erforderlich' });
   try {
-    if (!ai) throw new Error('Kein API Key');
-    const visit   = DB.visits.find(v => v.id === visit_id);
-    const patient = visit ? DB.patients.find(p => p.id === visit.patient_id) : null;
-    const msg = await ai.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      messages: [{
-        role: 'user',
-        content: `Du bist Assistent bei Curavio, einem Pflegedienst. Erstelle eine kurze, freundliche Zusammenfassung (2-3 Saetze) fuer die Angehoerigen eines Patienten.
+    const id = 'r_' + uuidv4().replace(/-/g, '').substring(0, 12);
+    let ai_summary = '';
 
-Patient: ${patient ? patient.name : 'Unbekannt'}
-Leistung: ${visit ? visit.service : ''}
-Bericht: ${content}
-Aufgaben: ${JSON.stringify(tasks_done || [])}
-Stimmung (1-5): ${mood || 3}
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const https = require('https');
+        const aiData = JSON.stringify({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 200,
+          messages: [{ role: 'user', content: `Fasse diesen Pflegebericht in 2-3 Sätzen zusammen: ${content}` }]
+        });
+        ai_summary = await new Promise((resolve) => {
+          const r = https.request({
+            hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+            headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'content-length': Buffer.byteLength(aiData) }
+          }, (res2) => {
+            let body = '';
+            res2.on('data', d => body += d);
+            res2.on('end', () => { try { resolve(JSON.parse(body).content[0].text); } catch { resolve(''); } });
+          });
+          r.on('error', () => resolve(''));
+          r.write(aiData); r.end();
+        });
+      } catch { ai_summary = ''; }
+    }
 
-Schreibe in der Du-Form an die Angehoerigen.`
-      }]
-    });
-    ai_summary = msg.content[0].text;
-  } catch (e) {
-    console.error('KI-Fehler:', e.message);
-    ai_summary = content.substring(0, 200);
-  }
-
-  const id = uuid();
-  DB.reports.push({
-    id, visit_id, content,
-    tasks_done: tasks_done ? JSON.stringify(tasks_done) : null,
-    mood: mood || 3,
-    vitals: vitals ? JSON.stringify(vitals) : null,
-    ai_summary,
-    created_at: now()
-  });
-
-  const visit = DB.visits.find(v => v.id === visit_id);
-  if (visit) visit.status = 'abgeschlossen';
-
-  broadcast({ type: 'new_report', visit_id, ai_summary });
-  res.status(201).json({ id, ai_summary });
+    const { rows } = await pool.query(
+      'INSERT INTO reports (id, patient_id, betreuer_id, visit_id, content, ai_summary, mood) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [id, patient_id, req.user.id, visit_id || null, content, ai_summary, mood || 'gut']
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── CHAT ─────────────────────────────────────────────────────────────────────
-
-app.get('/api/messages/:room_id', auth, (req, res) => {
-  const messages = DB.messages
-    .filter(m => m.room_id === req.params.room_id)
-    .slice(-100)
-    .map(m => {
-      const sender = DB.users.find(u => u.id === m.sender_id);
-      return { ...m, sender_name: sender ? sender.name : '', sender_role: sender ? sender.role : '' };
-    });
-  res.json(messages);
+// ===== NACHRICHTEN =====
+app.get('/api/messages/:room_id', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM messages WHERE room_id = $1 ORDER BY created_at ASC LIMIT 100',
+      [req.params.room_id]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/betreuer', auth, (req, res) => {
-  res.json(DB.users.filter(u => u.role === 'betreuer').map(u => ({ id: u.id, name: u.name, phone: u.phone })));
+// ===== ADMIN =====
+app.get('/api/admin/stats', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Keine Berechtigung' });
+  try {
+    const [u, p, v, r] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM users'),
+      pool.query('SELECT COUNT(*) FROM patients'),
+      pool.query('SELECT COUNT(*) FROM visits'),
+      pool.query('SELECT COUNT(*) FROM reports')
+    ]);
+    res.json({ users: +u.rows[0].count, patients: +p.rows[0].count, visits: +v.rows[0].count, reports: +r.rows[0].count });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/admin/users', auth, role('admin'), (req, res) => {
-  res.json(DB.users.map(function(u) { var o = Object.assign({}, u); delete o.password; return o; }));
+app.get('/api/admin/users', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Keine Berechtigung' });
+  try {
+    const { rows } = await pool.query('SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/admin/stats', auth, role('admin'), (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
-  res.json({
-    users:    DB.users.length,
-    patients: DB.patients.length,
-    visits:   DB.visits.length,
-    today:    DB.visits.filter(v => v.scheduled_at.startsWith(today)).length,
-    reports:  DB.reports.length
-  });
+app.patch('/api/admin/users/:id/role', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Keine Berechtigung' });
+  const { role } = req.body;
+  try {
+    const { rows } = await pool.query('UPDATE users SET role=$1 WHERE id=$2 RETURNING id,name,email,role', [role, req.params.id]);
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── WebSocket ────────────────────────────────────────────────────────────────
-const clients = new Map();
-
-wss.on('connection', function(ws) {
-  var userId = null;
-
-  ws.on('message', function(raw) {
-    try {
-      var msg = JSON.parse(raw);
-
-      if (msg.type === 'auth') {
-        try {
-          var user = jwt.verify(msg.token, JWT);
-          userId = user.id;
-          clients.set(userId, ws);
-          ws.send(JSON.stringify({ type: 'auth_ok', user: user }));
-        } catch(e) {
-          ws.send(JSON.stringify({ type: 'auth_error' }));
-        }
-        return;
-      }
-
-      if (!userId) return;
-
-      if (msg.type === 'chat') {
-        var id = uuid();
-        var sender = DB.users.find(function(u) { return u.id === userId; });
-        DB.messages.push({ id: id, room_id: msg.room_id, sender_id: userId, content: msg.content, created_at: now() });
-        broadcast({ type: 'chat', id: id, room_id: msg.room_id,
-          sender_id: userId, sender_name: sender ? sender.name : '', sender_role: sender ? sender.role : '',
-          content: msg.content, created_at: now() });
-      }
-
-      if (msg.type === 'location') {
-        broadcast({ type: 'location', betreuer_id: userId, lat: msg.lat, lng: msg.lng });
-      }
-
-    } catch(e) { console.error('WS-Fehler:', e.message); }
-  });
-
-  ws.on('close', function() { if (userId) clients.delete(userId); });
-});
-
-function broadcast(data) {
-  var str = JSON.stringify(data);
-  clients.forEach(function(ws) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(str);
-  });
-}
-
-// ─── SPA Fallback ─────────────────────────────────────────────────────────────
-app.get('*', function(req, res) {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-server.listen(PORT, function() {
-  var kiStatus = ai ? 'KI aktiv (Claude API)' : 'KI inaktiv (kein API Key)';
-  console.log('');
-  console.log('  ==========================================');
-  console.log('   CURAVIO laeuft!');
-  console.log('   http://localhost:' + PORT);
-  console.log('   ' + kiStatus);
-  console.log('');
-  console.log('   Demo-Logins:');
-  console.log('   thomas@demo.de    / curavio123');
-  console.log('   maria@demo.de     / curavio123');
-  console.log('   admin@curavio.de  / curavio123');
-  console.log('  ==========================================');
-  console.log('');
-});
+// ===== START =====
+async function start() {
+  console.log('='.repeat(50));
+  console.log(' CURAVIO startet...');
+
+  try {
+    await initDB();
+    console.log('[DB] Bereit!');
+  } catch (e) {
+    console.error('[DB] FEHLER - kein DATABASE_URL gesetzt?', e.message);
+    process.exit(1);
+  }
+
+  const server = app.listen(PORT, () => {
+    console.log('[Server] Port', PORT);
+    console.log('[KI]', process.env.ANTHROPIC_API_KEY ? 'Aktiv' : 'Inaktiv');
+    console.log('Demo: thomas@demo.de / curavio123');
+    console.log('='.repeat(50));
+  });
+
+  const wss = new WebSocketServer({ server });
+  const rooms = {};
+
+  wss.on('connection', (ws) => {
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'join') {
+          ws.roomId = msg.roomId; ws.userId = msg.userId; ws.userName = msg.userName;
+          if (!rooms[msg.roomId]) rooms[msg.roomId] = new Set();
+          rooms[msg.roomId].add(ws);
+        } else if (msg.type === 'message' && ws.roomId) {
+          const message = { id: uuidv4(), room_id: ws.roomId, sender_id: ws.userId, sender_name: ws.userName, content: msg.content, created_at: new Date().toISOString() };
+          try {
+            await pool.query('INSERT INTO messages (id, room_id, sender_id, sender_name, content) VALUES ($1,$2,$3,$4,$5)',
+              [message.id, message.room_id, message.sender_id, message.sender_name, message.content]);
+          } catch { /* ignore */ }
+          if (rooms[ws.roomId]) rooms[ws.roomId].forEach(c => { if (c.readyState === 1) c.send(JSON.stringify({ type: 'message', message })); });
+        }
+      } catch { /* ignore */ }
+    });
+    ws.on('close', () => { if (ws.roomId && rooms[ws.roomId]) rooms[ws.roomId].delete(ws); });
+  });
+}
+
+start();
