@@ -1,0 +1,7 @@
+Suche node.exe auf dem System... 
+ 
+C:\node.exe
+"where node" Exitcode: 0 
+ 
+=== Verzeichnis-Pruefung === 
+NICHT DA: C:\Program Files\nodejs\node.exe 

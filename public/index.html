@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Curavio</title>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1C3A2A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Curavio">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --cream:#F7F2E4;--cream-lt:#FDFAF2;--cream-dk:#EDE7D5;
+  --forest:#1C3A2A;--forest-md:#2D5640;--forest-lt:#E8EDE9;
+  --amber:#C47B3A;--amber-lt:#FBF0E4;--amber-dk:#A8652E;
+  --text:#1A2A1E;--muted:#6E7B72;--muted-lt:#A8B5AE;
+  --border:#E0D9C8;--border-dk:#C8BDA8;
+  --success:#2D6A4F;--success-lt:#E8F5EE;
+  --warn:#B45309;--warn-lt:#FEF3C7;
+  --danger:#991B1B;--danger-lt:#FEE2E2;
+  --info:#1E40AF;--info-lt:#DBEAFE;
+  --r-sm:8px;--r-md:14px;--r-lg:20px;--r-xl:28px;--r-full:100px;
+  --s-sm:0 2px 10px rgba(28,58,42,.08);
+  --s-md:0 6px 24px rgba(28,58,42,.12);
+  --s-lg:0 16px 48px rgba(28,58,42,.18);
+  --f-serif:'Cormorant Garant',Georgia,serif;
+  --f-sans:'DM Sans',system-ui,sans-serif;
+}
+body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA);
+  display:flex;justify-content:center;align-items:center;min-height:100vh;overflow:hidden;}
+
+/* ── Phone Shell ── */
+.phone{width:393px;height:852px;background:var(--cream);border-radius:52px;overflow:hidden;
+  position:relative;display:flex;flex-direction:column;
+  box-shadow:0 40px 100px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.5);}
+.di{position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  width:120px;height:34px;background:#000;border-radius:20px;z-index:50;}
+.sb{height:52px;background:transparent;display:flex;align-items:flex-end;
+  justify-content:space-between;padding:0 28px 8px 24px;font-size:13px;font-weight:700;
+  color:var(--text);flex-shrink:0;position:relative;z-index:40;}
+.sb-r{display:flex;gap:5px;align-items:center;}
+.sb-r svg{width:15px;height:15px;}
+
+/* ── Screens ── */
+.sw{flex:1;overflow:hidden;position:relative;}
+.sc{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;background:var(--cream);
+  display:none;flex-direction:column;scrollbar-width:none;padding-bottom:82px;}
+.sc::-webkit-scrollbar{display:none}
+.sc.active{display:flex}
+
+/* ── Bottom nav ── */
+.bnav{height:82px;background:var(--cream-lt);border-top:1px solid var(--border);
+  display:flex;align-items:stretch;flex-shrink:0;padding-bottom:8px;}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;background:none;border:none;cursor:pointer;transition:all .25s;position:relative;}
+.nb svg{width:22px;height:22px;transition:all .25s;}
+.nb span{font-size:10px;font-weight:600;letter-spacing:.02em;transition:all .25s;}
+.nb.active span{color:var(--forest)}.nb.active svg{stroke:var(--forest)}
+.nb:not(.active) svg{stroke:var(--muted-lt)}.nb:not(.active) span{color:var(--muted-lt)}
+.nb-dot{position:absolute;top:10px;right:calc(50% - 22px);background:var(--amber);
+  color:#fff;font-size:9px;font-weight:800;width:16px;height:16px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;border:2px solid var(--cream-lt);}
+
+/* ── Shared ── */
+.serif{font-family:var(--f-serif)}
+.card{background:var(--cream-lt);border-radius:var(--r-lg);border:1px solid var(--border);box-shadow:0 1px 3px rgba(28,58,42,.06)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r-full);font-size:11px;font-weight:700;letter-spacing:.02em}
+.chip-g{background:var(--success-lt);color:var(--success)}
+.chip-a{background:var(--warn-lt);color:var(--warn)}
+.chip-b{background:var(--info-lt);color:var(--info)}
+.chip-f{background:var(--forest-lt);color:var(--forest)}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  border:none;border-radius:var(--r-md);padding:15px 24px;font-size:15px;font-weight:700;
+  font-family:var(--f-sans);cursor:pointer;transition:all .25s;letter-spacing:.01em}
+.btn-f{background:var(--forest);color:var(--cream-lt)}
+.btn-f:hover{background:var(--forest-md);box-shadow:var(--s-md)}
+.btn-a{background:var(--amber);color:#fff}
+.btn-a:hover{background:var(--amber-dk);box-shadow:var(--s-md)}
+.btn-g{background:transparent;color:var(--forest);border:1.5px solid var(--border-dk);flex:1;padding:13px}
+.av{border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-serif);font-weight:600;color:var(--cream-lt)}
+.stl{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:20px 22px 10px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.fu{animation:fadeUp .4s cubic-bezier(.22,.68,0,1.2) forwards}
+@keyframes glow{0%,100%{box-shadow:0 0 0 4px rgba(28,58,42,.12)}50%{box-shadow:0 0 0 8px rgba(28,58,42,.06)}}
+
+/* ── Login ── */
+#sc-login{justify-content:center;align-items:center;padding:0 28px 0;background:var(--forest)}
+.login-logo{text-align:center;margin-bottom:32px}
+.login-logo svg{width:56px;height:56px}
+.login-logo .wm{font-family:var(--f-serif);font-size:36px;font-weight:600;color:#fff;display:block;margin-top:6px}
+.login-logo .tag{font-size:13px;color:rgba(255,255,255,.5);margin-top:4px}
+.login-card{background:var(--cream-lt);border-radius:var(--r-xl);padding:28px 24px;width:100%;box-shadow:var(--s-lg)}
+.login-card h3{font-family:var(--f-serif);font-size:24px;font-weight:600;color:var(--text);margin-bottom:20px;text-align:center}
+.fi{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.fi label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.fi input{padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);
+  font-size:15px;font-family:var(--f-sans);color:var(--text);background:var(--cream);outline:none;transition:border-color .2s}
+.fi input:focus{border-color:var(--forest)}
+.login-err{background:var(--danger-lt);color:var(--danger);border-radius:var(--r-md);
+  padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px;display:none}
+.login-note{text-align:center;font-size:12px;color:var(--muted);margin-top:14px}
+
+/* ── Hero ── */
+.hero{background:var(--forest);padding:0 0 40px;position:relative;overflow:hidden}
+.hero-in{padding:20px 22px 0;position:relative;z-index:2}
+.deco1{position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;background:rgba(196,123,58,.18)}
+.deco2{position:absolute;bottom:0;left:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.04)}
+.h-greet{font-size:13px;color:rgba(255,255,255,.6);font-weight:500}
+.h-title{font-family:var(--f-serif);font-size:30px;font-weight:600;color:#fff;line-height:1.15;margin-top:4px}
+.h-title em{font-style:italic;color:#F2C98A}
+.pbadge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(12px);
+  border-radius:var(--r-lg);padding:14px 16px;margin-top:20px;display:flex;align-items:center;gap:12px}
+.pb-name{font-size:16px;font-weight:700;color:#fff;font-family:var(--f-serif)}
+.pb-sub{font-size:12px;color:rgba(255,255,255,.6);margin-top:1px}
+
+/* ── Live Card ── */
+.lc{background:var(--cream-lt);border-radius:var(--r-xl);margin:-28px 16px 0;padding:20px;
+  box-shadow:var(--s-lg);border:1px solid var(--border);position:relative;z-index:3}
+.lc-lbl{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.07em;text-transform:uppercase}
+.lc-time{font-family:var(--f-serif);font-size:34px;font-weight:600;color:var(--forest);line-height:1.1;margin-top:2px}
+.lc-sub{font-size:13px;color:var(--muted);margin-top:2px}
+.cgrow{display:flex;align-items:center;gap:12px;background:var(--cream);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:12px 14px;margin-top:14px;cursor:pointer;transition:all .2s}
+.cg-name{font-size:15px;font-weight:700;color:var(--text)}
+.cg-sub{font-size:12px;color:var(--muted);margin-top:1px}
+.cg-stars{font-size:11px;color:var(--amber);font-weight:700;margin-top:2px}
+.etab{margin-left:auto;background:var(--forest);color:var(--cream-lt);border-radius:var(--r-md);padding:8px 14px;text-align:center;flex-shrink:0}
+.et-n{font-family:var(--f-serif);font-size:22px;font-weight:600;line-height:1}
+.et-l{font-size:9px;font-weight:700;opacity:.7;letter-spacing:.04em;text-transform:uppercase}
+.prog-steps{display:flex;justify-content:space-between;margin-bottom:7px}
+.prog-steps span{font-size:10px;font-weight:600;color:var(--muted-lt)}
+.prog-steps span.act{color:var(--forest);font-weight:700}
+.prog-t{height:5px;background:var(--cream-dk);border-radius:var(--r-full);overflow:hidden}
+.prog-f{height:100%;border-radius:var(--r-full);background:linear-gradient(90deg,var(--amber),var(--forest));transition:width .5s}
+
+/* ── Vitals ── */
+.vrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px}
+.vcard{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 10px;text-align:center}
+.v-ico{font-size:18px}.v-val{font-family:var(--f-serif);font-size:19px;font-weight:600;color:var(--text);margin-top:4px}
+.v-lbl{font-size:10px;font-weight:600;color:var(--muted-lt);margin-top:2px;letter-spacing:.03em;text-transform:uppercase}
+
+/* ── Quick actions ── */
+.qag{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px}
+.qab{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 16px;
+  cursor:pointer;transition:all .22s;text-align:left;display:flex;flex-direction:column;gap:12px}
+.qab:hover{transform:translateY(-2px);box-shadow:var(--s-md);border-color:var(--border-dk)}
+.qa-ico{width:40px;height:40px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:18px}
+.qa-lbl{font-size:13px;font-weight:700;color:var(--text)}.qa-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ── Week ── */
+.wi{display:flex;align-items:center;gap:14px;background:var(--cream-lt);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:14px 16px;margin:0 16px 10px}
+.db{border-radius:var(--r-sm);padding:8px 10px;text-align:center;flex-shrink:0;min-width:44px}
+.db .d{font-family:var(--f-serif);font-size:18px;font-weight:600;line-height:1}
+.db .m{font-size:9px;font-weight:700;opacity:.8;letter-spacing:.05em;text-transform:uppercase}
+.wi-t{font-size:14px;font-weight:700;color:var(--text)}.wi-s{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* ── Map ── */
+.map{height:265px;background:#EDE8DB;position:relative;overflow:hidden;flex-shrink:0}
+.map-g{position:absolute;inset:0;
+  background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:30px 30px;background-color:#EDE8DB}
+.road-h{position:absolute;height:14px;background:#F7F2E4;border-top:1px solid #D8D0C0;border-bottom:1px solid #D8D0C0}
+.road-v{position:absolute;width:14px;background:#F7F2E4;border-left:1px solid #D8D0C0;border-right:1px solid #D8D0C0}
+.mpin{position:absolute;display:flex;flex-direction:column;align-items:center}
+.mpin-dot{border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:var(--s-md)}
+.mpin-tag{margin-top:4px;white-space:nowrap;background:var(--text);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:var(--r-full)}
+.etabar{background:var(--cream-lt);padding:16px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.eb-name{font-size:17px;font-weight:700;color:var(--text);font-family:var(--f-serif)}
+.eb-sub{font-size:12px;color:var(--muted);margin-top:1px}
+.slist{padding:0 16px}
+.srow{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)}
+.srow:last-child{border-bottom:none}
+.sico{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px}
+.sico.done{background:var(--success-lt);color:var(--success);font-weight:900}
+.sico.act{background:var(--forest);color:var(--cream-lt);animation:glow 2s ease-in-out infinite}
+.sico.pend{background:var(--cream-dk);color:var(--muted-lt)}
+.st{font-size:14px;font-weight:700;color:var(--text)}.ss{font-size:12px;color:var(--muted);margin-top:2px}
+.trow{display:flex;gap:10px;padding:16px;flex-shrink:0}
+
+/* ── Booking ── */
+.bhdr{background:var(--cream-lt);padding:22px 22px 18px;border-bottom:1px solid var(--border)}
+.bhdr h2{font-family:var(--f-serif);font-size:28px;font-weight:600;color:var(--text)}
+.bhdr p{font-size:13px;color:var(--muted);margin-top:3px}
+.bprog{display:flex;align-items:center;padding:16px 22px;background:var(--cream-lt);border-bottom:1px solid var(--border)}
+.bp{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1}
+.bpc{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.bpc.done{background:var(--amber);color:#fff}.bpc.act{background:var(--forest);color:var(--cream-lt);box-shadow:0 0 0 4px var(--forest-lt)}
+.bpc.pend{background:var(--cream-dk);color:var(--muted);border:1.5px solid var(--border-dk)}
+.bpl{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.bline{flex:1;height:2px;background:var(--border);margin-bottom:18px}.bline.done{background:var(--amber)}
+.bbody{padding:22px 16px}.bst{font-family:var(--f-serif);font-size:20px;font-weight:600;color:var(--text);margin-bottom:14px}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.scard{background:var(--cream-lt);border:2px solid var(--border);border-radius:var(--r-lg);padding:18px 14px;cursor:pointer;transition:all .22s;text-align:center}
+.scard:hover,.scard.sel{border-color:var(--forest);background:var(--forest-lt)}
+.scard-ic{font-size:28px;margin-bottom:8px}.scard-n{font-size:13px;font-weight:700;color:var(--text)}
+.scard-d{font-size:11px;color:var(--muted);margin-top:3px}
+.dscroll{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scrollbar-width:none}
+.dscroll::-webkit-scrollbar{display:none}
+.dchip{flex-shrink:0;padding:10px 14px;background:var(--cream-lt);border:2px solid var(--border);border-radius:var(--r-md);cursor:pointer;transition:all .2s;text-align:center}
+.dchip.sel{border-color:var(--forest);background:var(--forest);color:var(--cream-lt)}
+.dc-day{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;opacity:.7}
+.dchip.sel .dc-day{color:var(--cream-lt)}
+.dc-num{font-family:var(--f-serif);font-size:20px;font-weight:600;margin-top:1px}
+.slotsg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.slot{background:var(--cream-lt);border:2px solid var(--border);border-radius:var(--r-md);padding:12px 6px;
+  text-align:center;cursor:pointer;transition:all .2s;font-size:14px;font-weight:700;color:var(--text)}
+.slot:hover{border-color:var(--forest);background:var(--forest-lt)}
+.slot.sel{border-color:var(--forest);background:var(--forest);color:var(--cream-lt)}
+.slot.gone{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+.sum-card{background:var(--forest-lt);border:1.5px solid rgba(28,58,42,.2);border-radius:var(--r-lg);padding:18px;margin-bottom:14px}
+.sum-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(28,58,42,.1)}
+.sum-row:last-child{border-bottom:none}
+.sum-l{font-size:13px;color:var(--muted)}.sum-v{font-size:13px;font-weight:700;color:var(--text);text-align:right}
+.info-b{background:var(--amber-lt);border:1px solid rgba(196,123,58,.3);border-radius:var(--r-md);padding:12px 14px;font-size:12px;color:var(--warn);margin-bottom:16px;line-height:1.5}
+
+/* ── Reports ── */
+.rhdr{background:var(--cream-lt);padding:22px 22px 18px;border-bottom:1px solid var(--border)}
+.rhdr h2{font-family:var(--f-serif);font-size:28px;font-weight:600;color:var(--text)}
+.rhdr p{font-size:13px;color:var(--muted);margin-top:3px}
+.rcard{background:var(--cream-lt);border-radius:var(--r-lg);border:1px solid var(--border);overflow:hidden;margin:0 16px 12px;box-shadow:0 1px 3px rgba(28,58,42,.06)}
+.rch{padding:14px 16px;display:flex;align-items:center;gap:12px;background:var(--cream);border-bottom:1px solid var(--border)}
+.rcd{border-radius:var(--r-sm);padding:8px 10px;text-align:center;flex-shrink:0;min-width:44px;color:var(--cream-lt)}
+.rcd .d{font-family:var(--f-serif);font-size:19px;font-weight:600;line-height:1}
+.rcd .m{font-size:9px;font-weight:700;opacity:.85;letter-spacing:.06em;text-transform:uppercase}
+.ri-t{font-size:15px;font-weight:700;color:var(--text)}.ri-s{font-size:12px;color:var(--muted);margin-top:2px}
+.rcb{padding:16px}.rcb p{font-size:13px;color:var(--text);line-height:1.65}
+.rcb-ai{background:var(--forest-lt);border:1px solid rgba(28,58,42,.15);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:var(--forest);margin-top:10px;line-height:1.6}
+.rcb-ai-lbl{font-size:10px;font-weight:700;color:var(--forest);opacity:.7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.rctasks{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.ttag{background:var(--cream);border:1px solid var(--border);border-radius:var(--r-full);padding:5px 10px;font-size:11px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:4px}
+.ttag.ok{background:var(--success-lt);border-color:#86EFAC;color:var(--success)}
+.ttag.warn{background:var(--warn-lt);border-color:#FCD34D;color:var(--warn)}
+.rcmood{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.me{width:26px;height:26px;border-radius:50%;font-size:14px;display:flex;align-items:center;justify-content:center;cursor:default}
+.me.act{background:var(--forest-lt);border:1.5px solid rgba(28,58,42,.2)}
+
+/* ── Chat ── */
+.chdr{background:var(--cream-lt);padding:14px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ch-n{font-size:16px;font-weight:700;color:var(--text);font-family:var(--f-serif)}
+.ch-s{font-size:12px;color:var(--success);font-weight:600}
+.ch-c{margin-left:auto;background:var(--cream);border:1px solid var(--border);border-radius:var(--r-md);padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text);transition:all .2s}
+.cmsgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.cmsgs::-webkit-scrollbar{display:none}
+.msg{display:flex;flex-direction:column;max-width:80%}
+.msg.out{align-self:flex-end;align-items:flex-end}
+.msg.in{align-self:flex-start;align-items:flex-start}
+.bub{padding:11px 14px;border-radius:18px;font-size:14px;line-height:1.5}
+.msg.in .bub{background:var(--cream-lt);color:var(--text);border-bottom-left-radius:4px;border:1px solid var(--border)}
+.msg.out .bub{background:var(--forest);color:var(--cream-lt);border-bottom-right-radius:4px}
+.mts{font-size:10px;color:var(--muted-lt);margin-top:3px}
+.sysmsg{text-align:center;font-size:11px;color:var(--muted);background:var(--cream-dk);border-radius:var(--r-full);padding:5px 14px;align-self:center}
+.cinrow{padding:10px 14px;background:var(--cream-lt);border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.cinp{flex:1;padding:11px 16px;border:1.5px solid var(--border);border-radius:var(--r-full);font-size:14px;font-family:var(--f-sans);outline:none;color:var(--text);background:var(--cream);transition:border-color .2s}
+.cinp:focus{border-color:var(--forest)}
+.sendb{width:44px;height:44px;border-radius:50%;background:var(--forest);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.sendb:hover{background:var(--forest-md)}
+
+/* ── Loading ── */
+.loading{position:absolute;inset:0;background:var(--forest);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;transition:opacity .4s}
+.loading.hide{opacity:0;pointer-events:none}
+.loading svg{width:60px;height:60px;animation:fadeUp .5s forwards}
+.loading .wm{font-family:var(--f-serif);font-size:32px;font-weight:600;color:#fff;margin-top:8px}
+.loading .sub{font-size:13px;color:rgba(255,255,255,.5);margin-top:4px}
+.spin{width:32px;height:32px;border:3px solid rgba(255,255,255,.2);border-top-color:var(--amber);border-radius:50%;animation:spin .8s linear infinite;margin-top:24px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Toast ── */
+.toast{position:absolute;bottom:96px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--cream-lt);border-radius:var(--r-md);padding:10px 18px;font-size:13px;font-weight:600;white-space:nowrap;z-index:200;opacity:0;pointer-events:none;transition:opacity .3s;box-shadow:var(--s-lg)}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <div class="di"></div>
+
+  <!-- Loading Screen -->
+  <div class="loading" id="loading">
+    <svg viewBox="0 0 40 40" fill="none">
+      <circle cx="14" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/>
+      <circle cx="26" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/>
+      <path d="M20 38 C10 30 4 24 4 18 C4 13 7.5 10 12 10 C15 10 17.5 11.5 20 14 C22.5 11.5 25 10 28 10 C32.5 10 36 13 36 18 C36 24 30 30 20 38Z" stroke="#F2C98A" stroke-width="2" fill="none"/>
+    </svg>
+    <div class="wm">Curavio</div>
+    <div class="sub">Entlastung. Alltag. Vertrauen.</div>
+    <div class="spin"></div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="sb">
+    <span>9:41</span>
+    <div class="sb-r">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2.2"><path d="M1 6l5 5 6-6 6 6 5-5"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2.2"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2.2"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg>
+    </div>
+  </div>
+
+  <div class="sw">
+
+    <!-- ── LOGIN ── -->
+    <div class="sc active" id="sc-login" style="padding-bottom:0">
+      <div class="login-logo">
+        <svg viewBox="0 0 40 40" fill="none">
+          <circle cx="14" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/>
+          <circle cx="26" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/>
+          <path d="M20 38 C10 30 4 24 4 18 C4 13 7.5 10 12 10 C15 10 17.5 11.5 20 14 C22.5 11.5 25 10 28 10 C32.5 10 36 13 36 18 C36 24 30 30 20 38Z" stroke="#F2C98A" stroke-width="2" fill="none"/>
+        </svg>
+        <span class="wm">Curavio</span>
+        <div class="tag">Entlastung. Alltag. Vertrauen.</div>
+      </div>
+      <div class="login-card">
+        <h3>Willkommen zurück</h3>
+        <div id="login-err" class="login-err"></div>
+        <div class="fi"><label>E-Mail</label><input type="email" id="li-email" value="thomas@demo.de" placeholder="ihre@email.de"></div>
+        <div class="fi"><label>Passwort</label><input type="password" id="li-pw" value="curavio123" placeholder="••••••••"></div>
+        <button class="btn btn-a" style="margin-top:6px" onclick="doLogin()">Anmelden →</button>
+        <div class="login-note">Demo: thomas@demo.de / curavio123</div>
+      </div>
+    </div>
+
+    <!-- ── HOME ── -->
+    <div class="sc" id="sc-home">
+      <div class="hero">
+        <div class="deco1"></div><div class="deco2"></div>
+        <div class="hero-in">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg viewBox="0 0 40 40" fill="none" width="28" height="28"><circle cx="14" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><circle cx="26" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><path d="M20 38 C10 30 4 24 4 18 C4 13 7.5 10 12 10 C15 10 17.5 11.5 20 14 C22.5 11.5 25 10 28 10 C32.5 10 36 13 36 18 C36 24 30 30 20 38Z" stroke="#F2C98A" stroke-width="2" fill="none"/></svg>
+              <span style="font-family:var(--f-serif);font-size:20px;font-weight:600;color:#fff">Curavio</span>
+            </div>
+            <button onclick="doLogout()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Abmelden</button>
+          </div>
+          <div class="h-greet" id="h-greet">Guten Tag</div>
+          <div class="h-title">Alles im <em>Blick.</em><br>Immer.</div>
+          <div class="pbadge" id="pbadge" style="display:none">
+            <div class="av" style="width:44px;height:44px;font-size:18px;background:rgba(242,201,138,.3);border:1.5px solid rgba(242,201,138,.4)" id="pat-av">H</div>
+            <div><div class="pb-name" id="pat-name">–</div><div class="pb-sub" id="pat-sub">–</div></div>
+            <span class="chip chip-g" style="margin-left:auto;background:rgba(45,106,79,.3);color:#7FCEA0;border:1px solid rgba(45,106,79,.4)"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span> Gut</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Card -->
+      <div class="lc fu">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between">
+          <div>
+            <div class="lc-lbl">Nächster Besuch · Heute</div>
+            <div class="lc-time" id="lc-time">–</div>
+            <div class="lc-sub" id="lc-sub">Wird geladen …</div>
+          </div>
+          <span class="chip chip-f"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>Live</span>
+        </div>
+        <div class="cgrow" onclick="goTo('sc-track')">
+          <div class="av" style="width:42px;height:42px;font-size:16px;background:linear-gradient(135deg,#D97706,#B45309)">MK</div>
+          <div>
+            <div class="cg-name" id="cg-name">Maria Kovács</div>
+            <div class="cg-sub">Alltagsbegleiterin</div>
+            <div class="cg-stars">★★★★★ 4.9</div>
+          </div>
+          <div class="etab"><div class="et-n" id="eta-h">12</div><div class="et-l">Min.</div></div>
+        </div>
+        <div style="margin-top:14px">
+          <div class="prog-steps"><span>Gestartet</span><span class="act">Unterwegs ●</span><span>Angekommen</span></div>
+          <div class="prog-t"><div class="prog-f" id="prog-fill" style="width:62%"></div></div>
+        </div>
+      </div>
+
+      <!-- Vitals -->
+      <div class="stl">Letzte Messwerte</div>
+      <div class="vrow">
+        <div class="vcard"><div class="v-ico">❤️</div><div class="v-val">72</div><div class="v-lbl">Puls</div></div>
+        <div class="vcard"><div class="v-ico">🩺</div><div class="v-val" style="font-size:15px">128/82</div><div class="v-lbl">Blutdruck</div></div>
+        <div class="vcard"><div class="v-ico">🌤</div><div class="v-val" style="font-size:15px">Gut</div><div class="v-lbl">Stimmung</div></div>
+      </div>
+
+      <!-- Quick actions -->
+      <div class="stl">Schnellzugriff</div>
+      <div class="qag">
+        <div class="qab" onclick="goTo('sc-book')"><div class="qa-ico" style="background:var(--forest-lt)">📅</div><div><div class="qa-lbl">Termin buchen</div><div class="qa-sub">Neuen Besuch anfragen</div></div></div>
+        <div class="qab" onclick="goTo('sc-chat')"><div class="qa-ico" style="background:var(--amber-lt)">💬</div><div><div class="qa-lbl">Nachricht</div><div class="qa-sub">An Betreuerin schreiben</div></div></div>
+        <div class="qab" onclick="goTo('sc-rep')"><div class="qa-ico" style="background:var(--info-lt)">📋</div><div><div class="qa-lbl">Berichte</div><div class="qa-sub">Letzte Besuchsberichte</div></div></div>
+        <div class="qab" onclick="toast('Notfall: +49 30 1234567')"><div class="qa-ico" style="background:var(--danger-lt)">🚨</div><div><div class="qa-lbl">Notfall</div><div class="qa-sub">Sofort-Kontakt</div></div></div>
+      </div>
+
+      <!-- Upcoming visits -->
+      <div class="stl">Diese Woche</div>
+      <div id="visits-list"></div>
+
+      <div style="text-align:center;padding:24px 24px 8px">
+        <div style="font-family:var(--f-serif);font-size:16px;color:var(--muted);font-style:italic">Entlastung. Alltag. Vertrauen.</div>
+      </div>
+    </div>
+
+    <!-- ── TRACKING ── -->
+    <div class="sc" id="sc-track">
+      <div class="map">
+        <div class="map-g"></div>
+        <div class="road-h" style="top:75px;left:0;right:0"></div>
+        <div class="road-h" style="top:155px;left:0;right:0"></div>
+        <div class="road-v" style="left:75px;top:0;bottom:0"></div>
+        <div class="road-v" style="left:215px;top:0;bottom:0"></div>
+        <div class="road-v" style="left:325px;top:0;bottom:0"></div>
+        <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 393 265" preserveAspectRatio="none">
+          <path d="M 78 205 Q 150 205 215 155 Q 270 120 270 90" fill="none" stroke="var(--forest)" stroke-width="2.5" stroke-dasharray="8 5" opacity=".4"/>
+        </svg>
+        <div class="mpin" id="cpin" style="left:135px;top:150px;transition:left 2.5s ease,top 2.5s ease">
+          <div class="mpin-dot" style="width:46px;height:46px;background:var(--forest)"><span style="font-size:22px">🚗</span></div>
+          <div class="mpin-tag">Maria K.</div>
+        </div>
+        <div class="mpin" style="left:250px;top:62px">
+          <div class="mpin-dot" style="width:42px;height:42px;background:var(--amber)">🏡</div>
+          <div class="mpin-tag">Heinrich</div>
+        </div>
+        <div style="position:absolute;bottom:10px;right:12px;background:rgba(247,242,228,.85);border-radius:6px;padding:4px 9px;font-size:10px;font-weight:700;color:var(--muted);backdrop-filter:blur(4px)">Live-Karte</div>
+      </div>
+      <div class="etabar">
+        <div class="av" style="width:48px;height:48px;font-size:18px;background:linear-gradient(135deg,#D97706,#B45309)">MK</div>
+        <div><div class="eb-name">Maria Kovács</div><div class="eb-sub">Alltagsbegleiterin · ★★★★★ 4.9</div></div>
+        <div class="etab" style="background:var(--amber)"><div class="et-n" id="eta-t">12</div><div class="et-l">Min.</div></div>
+      </div>
+      <div class="stl">Heutiger Besuch</div>
+      <div class="slist">
+        <div class="srow"><div class="sico done">✓</div><div><div class="st">Bestätigt</div><div class="ss">Maria K. · 13:45</div></div></div>
+        <div class="srow"><div class="sico act">🚗</div><div><div class="st">Unterwegs</div><div class="ss">Ca. 12 Min. · Kantstraße</div></div></div>
+        <div class="srow"><div class="sico pend">○</div><div><div class="st">Gesellschaft &amp; Betreuung</div><div class="ss">Geplant · 60 Min.</div></div></div>
+        <div class="srow"><div class="sico pend">○</div><div><div class="st">Besuchsbericht</div><div class="ss">Wird automatisch per KI erstellt</div></div></div>
+      </div>
+      <div class="trow">
+        <button class="btn btn-g" onclick="goTo('sc-chat')">💬 Nachricht</button>
+        <button class="btn btn-f" style="flex:1" onclick="toast('Anruf zu Maria K. wird gestartet …')">📞 Anrufen</button>
+      </div>
+    </div>
+
+    <!-- ── BOOKING ── -->
+    <div class="sc" id="sc-book">
+      <div class="bhdr">
+        <h2>Termin buchen</h2>
+        <p>Schnell, einfach, digital – in unter 60 Sekunden</p>
+      </div>
+      <div class="bprog">
+        <div class="bp"><div class="bpc act" id="bp1">1</div><span class="bpl">Service</span></div>
+        <div class="bline" id="bl1"></div>
+        <div class="bp"><div class="bpc pend" id="bp2">2</div><span class="bpl">Zeit</span></div>
+        <div class="bline" id="bl2"></div>
+        <div class="bp"><div class="bpc pend" id="bp3">3</div><span class="bpl">Bestätigen</span></div>
+      </div>
+      <div class="bbody" id="bs1">
+        <div class="bst">Welche Leistung?</div>
+        <div class="sgrid">
+          <div class="scard" onclick="ps(this,'🤝 Gesellschaft','90 Min')"><div class="scard-ic">🤝</div><div class="scard-n">Gesellschaft</div><div class="scard-d">90 Min.</div></div>
+          <div class="scard" onclick="ps(this,'🏠 Hauswirtschaft','90 Min')"><div class="scard-ic">🏠</div><div class="scard-n">Hauswirtschaft</div><div class="scard-d">90 Min.</div></div>
+          <div class="scard" onclick="ps(this,'🛒 Einkaufen','60 Min')"><div class="scard-ic">🛒</div><div class="scard-n">Einkaufen</div><div class="scard-d">60 Min.</div></div>
+          <div class="scard" onclick="ps(this,'🚶 Begleitung','120 Min')"><div class="scard-ic">🚶</div><div class="scard-n">Begleitung</div><div class="scard-d">120 Min.</div></div>
+        </div>
+      </div>
+      <div class="bbody" id="bs2" style="display:none">
+        <div class="bst">Wann?</div>
+        <div class="dscroll">
+          <div class="dchip sel" onclick="pd(this,'Mo, 09.06.')"><div class="dc-day">Mo</div><div class="dc-num">09</div></div>
+          <div class="dchip" onclick="pd(this,'Di, 10.06.')"><div class="dc-day">Di</div><div class="dc-num">10</div></div>
+          <div class="dchip" onclick="pd(this,'Mi, 11.06.')"><div class="dc-day">Mi</div><div class="dc-num">11</div></div>
+          <div class="dchip" onclick="pd(this,'Do, 12.06.')"><div class="dc-day">Do</div><div class="dc-num">12</div></div>
+          <div class="dchip" onclick="pd(this,'Fr, 13.06.')"><div class="dc-day">Fr</div><div class="dc-num">13</div></div>
+        </div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin:8px 0 10px">Freie Zeiten</div>
+        <div class="slotsg">
+          <div class="slot" onclick="psl(this,'08:00')">08:00</div>
+          <div class="slot" onclick="psl(this,'09:30')">09:30</div>
+          <div class="slot gone">10:00</div>
+          <div class="slot" onclick="psl(this,'11:00')">11:00</div>
+          <div class="slot" onclick="psl(this,'13:00')">13:00</div>
+          <div class="slot gone">14:30</div>
+          <div class="slot" onclick="psl(this,'16:00')">16:00</div>
+          <div class="slot" onclick="psl(this,'17:30')">17:30</div>
+          <div class="slot gone">18:00</div>
+        </div>
+      </div>
+      <div class="bbody" id="bs3" style="display:none">
+        <div class="bst">Alles stimmt?</div>
+        <div class="sum-card">
+          <div class="sum-row"><span class="sum-l">Patient</span><span class="sum-v" id="sv-pat">Heinrich Müller</span></div>
+          <div class="sum-row"><span class="sum-l">Leistung</span><span class="sum-v" id="sv-svc">–</span></div>
+          <div class="sum-row"><span class="sum-l">Datum &amp; Zeit</span><span class="sum-v" id="sv-dt">–</span></div>
+          <div class="sum-row"><span class="sum-l">Helfer</span><span class="sum-v">KI-Matching</span></div>
+          <div class="sum-row"><span class="sum-l">Kosten</span><span class="sum-v" style="color:var(--success)">0 € Eigenanteil</span></div>
+        </div>
+        <div class="info-b">✅ Pflegekasse übernimmt die Kosten vollständig. Kein Aufwand für Sie.</div>
+        <button class="btn btn-a" onclick="doBook()">Jetzt verbindlich buchen →</button>
+      </div>
+    </div>
+
+    <!-- ── REPORTS ── -->
+    <div class="sc" id="sc-rep">
+      <div class="rhdr">
+        <h2>Besuchsberichte</h2>
+        <p>KI-generiert nach jedem Besuch</p>
+      </div>
+      <div style="height:14px"></div>
+      <div id="reports-list"></div>
+    </div>
+
+    <!-- ── CHAT ── -->
+    <div class="sc" id="sc-chat" style="padding-bottom:0">
+      <div class="chdr">
+        <div class="av" style="width:44px;height:44px;font-size:16px;background:linear-gradient(135deg,#D97706,#B45309)">MK</div>
+        <div><div class="ch-n">Maria Kovács</div><div class="ch-s">● Online · Unterwegs</div></div>
+        <button class="ch-c" onclick="toast('Anruf wird gestartet …')">📞 Anruf</button>
+      </div>
+      <div class="cmsgs" id="cmsgs">
+        <div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>
+      </div>
+      <div class="cinrow">
+        <input class="cinp" id="cinp" placeholder="Nachricht …" onkeydown="if(event.key==='Enter')sendMsg()">
+        <button class="sendb" onclick="sendMsg()">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cream-lt)" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- sw -->
+
+  <!-- Bottom nav (hidden on login) -->
+  <nav class="bnav" id="bnav" style="display:none">
+    <button class="nb" id="nb-h" onclick="goTo('sc-home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span>
+    </button>
+    <button class="nb" id="nb-t" onclick="goTo('sc-track')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span>Live</span>
+    </button>
+    <button class="nb" id="nb-b" onclick="goTo('sc-book')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Buchen</span>
+    </button>
+    <button class="nb" id="nb-r" onclick="goTo('sc-rep')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Berichte</span>
+    </button>
+    <button class="nb" id="nb-c" onclick="goTo('sc-chat')">
+      <div class="nb-dot" id="chat-dot">2</div>
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span>
+    </button>
+  </nav>
+
+  <div class="toast" id="toast-el"></div>
+</div>
+
+<script>
+// ─── Config ───────────────────────────────────────────────────────────────────
+const API = window.location.origin + '/api';
+let TOKEN = localStorage.getItem('curavio_token') || null;
+let USER  = JSON.parse(localStorage.getItem('curavio_user') || 'null');
+let ws    = null;
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.getElementById('loading').classList.add('hide');
+    if (TOKEN && USER) { showApp(); loadAll(); }
+  }, 1200);
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function toast(m) {
+  const t = document.getElementById('toast-el');
+  t.textContent = m; t.classList.add('on');
+  setTimeout(() => t.classList.remove('on'), 2800);
+}
+
+const navMap = {'sc-home':'nb-h','sc-track':'nb-t','sc-book':'nb-b','sc-rep':'nb-r','sc-chat':'nb-c'};
+function goTo(id) {
+  document.querySelectorAll('.sc').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(n => n.classList.remove('active'));
+  const s = document.getElementById(id);
+  if (s) { s.classList.add('active'); s.scrollTop = 0; }
+  const nb = navMap[id];
+  if (nb) document.getElementById(nb).classList.add('active');
+  if (id === 'sc-chat') { const d = document.getElementById('chat-dot'); if (d) d.style.display = 'none'; }
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...(TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {}) },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  return res.json();
+}
+
+function fmt(iso) {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  return d.toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'2-digit' }) + ' · ' +
+         d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('li-email').value;
+  const pw    = document.getElementById('li-pw').value;
+  const err   = document.getElementById('login-err');
+  err.style.display = 'none';
+
+  const data = await api('/auth/login', { method:'POST', body: { email, password: pw } });
+  if (data.error) { err.textContent = data.error; err.style.display = 'block'; return; }
+
+  TOKEN = data.token; USER = data.user;
+  localStorage.setItem('curavio_token', TOKEN);
+  localStorage.setItem('curavio_user', JSON.stringify(USER));
+  showApp(); loadAll();
+}
+
+function doLogout() {
+  TOKEN = null; USER = null;
+  localStorage.removeItem('curavio_token');
+  localStorage.removeItem('curavio_user');
+  if (ws) { ws.close(); ws = null; }
+  document.getElementById('bnav').style.display = 'none';
+  document.querySelectorAll('.sc').forEach(s => s.classList.remove('active'));
+  document.getElementById('sc-login').classList.add('active');
+}
+
+function showApp() {
+  document.getElementById('bnav').style.display = 'flex';
+  goTo('sc-home');
+  const greet = document.getElementById('h-greet');
+  const h = new Date().getHours();
+  greet.textContent = (h < 12 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend') + ', ' + (USER?.name?.split(' ')[0] || '') + ' 👋';
+  connectWS();
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen  = () => ws.send(JSON.stringify({ type: 'auth', token: TOKEN }));
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'chat') appendMsg(msg);
+    if (msg.type === 'visit_update') loadVisits();
+    if (msg.type === 'new_report') { loadReports(); toast('📋 Neuer Besuchsbericht verfügbar'); }
+  };
+  ws.onclose = () => setTimeout(connectWS, 3000);
+}
+
+// ─── Load data ────────────────────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([loadPatient(), loadVisits(), loadReports(), loadMessages()]);
+}
+
+async function loadPatient() {
+  const patients = await api('/patients');
+  if (!patients.length) return;
+  const p = patients[0];
+  const badge = document.getElementById('pbadge');
+  badge.style.display = 'flex';
+  document.getElementById('pat-av').textContent  = p.name[0];
+  document.getElementById('pat-name').textContent = p.name;
+  document.getElementById('pat-sub').textContent  = `Ihr Angehöriger · Pflegegrad ${p.pflegegrad} · ${p.address?.split(',')[1]?.trim() || 'Berlin'}`;
+  document.getElementById('sv-pat').textContent   = p.name;
+}
+
+async function loadVisits() {
+  const visits = await api('/visits');
+  const list = document.getElementById('visits-list');
+  list.innerHTML = '';
+
+  // Next visit for live card
+  const upcoming = visits.filter(v => ['geplant','bestätigt','unterwegs'].includes(v.status));
+  if (upcoming.length) {
+    const v = upcoming[0];
+    const d = new Date(v.scheduled_at);
+    document.getElementById('lc-time').textContent = d.toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'}) + ' Uhr';
+    document.getElementById('lc-sub').textContent  = (v.betreuer_name || 'Betreuer') + ' · ' + v.status;
+    document.getElementById('cg-name').textContent = v.betreuer_name || 'Maria K.';
+  }
+
+  // Week list (max 5)
+  const colors = ['var(--forest)','var(--muted)','var(--info)','var(--amber)','var(--success)'];
+  visits.slice(0, 5).forEach((v, i) => {
+    const d = new Date(v.scheduled_at);
+    const day  = d.toLocaleDateString('de-DE', {weekday:'short'});
+    const date = d.toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit'});
+    const chip = v.status === 'unterwegs' ? '<span class="chip chip-f">Heute</span>'
+               : v.status === 'abgeschlossen' ? '<span class="chip chip-g">Fertig</span>'
+               : '<span class="chip chip-b">Geplant</span>';
+    list.innerHTML += `
+      <div class="wi">
+        <div class="db" style="background:${colors[i%colors.length]};color:var(--cream-lt)">
+          <div class="d">${day}</div><div class="m">${date}</div>
+        </div>
+        <div style="flex:1">
+          <div class="wi-t">${v.service}</div>
+          <div class="wi-s">${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} · ${v.betreuer_name||'–'} · ${v.duration_min} Min.</div>
+        </div>
+        ${chip}
+      </div>`;
+  });
+  if (!visits.length) list.innerHTML = '<div style="padding:20px 22px;font-size:13px;color:var(--muted)">Noch keine Besuche geplant.</div>';
+}
+
+async function loadReports() {
+  const reports = await api('/reports');
+  const list = document.getElementById('reports-list');
+  list.innerHTML = '';
+  if (!reports.length) {
+    list.innerHTML = '<div style="padding:20px 22px;font-size:13px;color:var(--muted)">Noch keine Berichte vorhanden.</div>';
+    return;
+  }
+  reports.forEach(r => {
+    const d   = new Date(r.scheduled_at || r.created_at);
+    const day = d.toLocaleDateString('de-DE', {day:'2-digit'});
+    const mon = d.toLocaleDateString('de-DE', {month:'short'}).toUpperCase();
+    const tasks = Array.isArray(r.tasks_done) ? r.tasks_done : [];
+    const chips = tasks.map(t => `<div class="ttag ok">✓ ${t}</div>`).join('');
+    const moods = ['😞','😐','😊','😄'];
+    const moodHtml = moods.map((m,i) => `<div class="me${(r.mood||3)-1===i?' act':''}">${m}</div>`).join('');
+    list.innerHTML += `
+      <div class="rcard">
+        <div class="rch">
+          <div class="rcd" style="background:var(--forest)"><div class="d">${day}</div><div class="m">${mon}</div></div>
+          <div><div class="ri-t">${r.service||'Besuch'}</div><div class="ri-s">${r.betreuer_name||'–'} · ${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</div></div>
+          <span class="chip chip-g" style="margin-left:auto">Gut</span>
+        </div>
+        <div class="rcb">
+          <p>${r.content}</p>
+          ${r.ai_summary ? `<div class="rcb-ai"><div class="rcb-ai-lbl">✨ KI-Zusammenfassung</div>${r.ai_summary}</div>` : ''}
+          <div class="rctasks">${chips}</div>
+          <div class="rcmood"><span style="font-size:12px;color:var(--muted);flex:1">Stimmung</span><div style="display:flex;gap:4px">${moodHtml}</div></div>
+        </div>
+      </div>`;
+  });
+}
+
+async function loadMessages() {
+  const msgs = await api('/messages/visit_v1');
+  const box = document.getElementById('cmsgs');
+  // Keep system message, add history
+  msgs.forEach(m => appendMsg(m, false));
+  box.scrollTop = box.scrollHeight;
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+const demoReplies = [
+  'Verstanden! Mache ich 👍',
+  'Danke für den Hinweis – notiere ich im Bericht.',
+  'Bin gleich da! 😊',
+  'Gerne kümmere ich mich darum.',
+  'Alles klar, bis gleich!'
+];
+
+function appendMsg(m, scroll = true) {
+  const box = document.getElementById('cmsgs');
+  const isOut = m.sender_id === USER?.id;
+  const ts = new Date(m.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  const div = document.createElement('div');
+  div.className = 'msg ' + (isOut ? 'out' : 'in') + ' fu';
+  div.innerHTML = `<div class="bub">${m.content}</div><div class="mts">${ts}</div>`;
+  box.appendChild(div);
+  if (scroll) box.scrollTop = box.scrollHeight;
+}
+
+async function sendMsg() {
+  const inp = document.getElementById('cinp');
+  const txt = inp.value.trim();
+  if (!txt || !ws || ws.readyState !== WebSocket.OPEN) {
+    // Fallback: lokale Demo
+    const box = document.getElementById('cmsgs');
+    const ts  = new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    const d1  = document.createElement('div');
+    d1.className='msg out fu';
+    d1.innerHTML=`<div class="bub">${txt}</div><div class="mts">${ts}</div>`;
+    box.appendChild(d1); inp.value=''; box.scrollTop=box.scrollHeight;
+    setTimeout(() => {
+      const d2=document.createElement('div');
+      d2.className='msg in fu';
+      d2.innerHTML=`<div class="bub">${demoReplies[Math.floor(Math.random()*demoReplies.length)]}</div><div class="mts">${ts}</div>`;
+      box.appendChild(d2); box.scrollTop=box.scrollHeight;
+    },1400);
+    return;
+  }
+  ws.send(JSON.stringify({ type:'chat', room_id:'visit_v1', content: txt }));
+  inp.value = '';
+}
+
+// ─── Booking ──────────────────────────────────────────────────────────────────
+let bk = { svc:'', dt:'', date:'Mo, 09.06.' };
+function ps(el, svc) {
+  document.querySelectorAll('.scard').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel'); bk.svc = svc;
+  setTimeout(()=>gbStep(2), 280);
+}
+function pd(el, d) {
+  document.querySelectorAll('.dchip').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel'); bk.date = d; updSum();
+}
+function psl(el, t) {
+  document.querySelectorAll('.slot:not(.gone)').forEach(s=>s.classList.remove('sel'));
+  el.classList.add('sel'); bk.dt = bk.date + ' · ' + t;
+  setTimeout(()=>gbStep(3), 280);
+}
+function gbStep(n) {
+  ['bs1','bs2','bs3'].forEach((id,i)=>{document.getElementById(id).style.display=(i+1===n)?'block':'none'});
+  for(let i=1;i<=3;i++){const c=document.getElementById('bp'+i);c.className='bpc '+(i<n?'done':i===n?'act':'pend');c.textContent=i<n?'✓':i}
+  for(let i=1;i<=2;i++){document.getElementById('bl'+i).className='bline '+(i<n?'done':'')}
+  if(n===3) updSum();
+  document.getElementById('sc-book').scrollTop=0;
+}
+function updSum() {
+  const s=document.getElementById('sv-svc'); const t=document.getElementById('sv-dt');
+  if(s) s.textContent=bk.svc||'–'; if(t) t.textContent=bk.dt||'–';
+}
+async function doBook() {
+  const patients = await api('/patients');
+  if (!patients.length) { toast('Kein Patient gefunden'); return; }
+
+  // Parse date/time
+  const parts = bk.dt.split(' · ');
+  const today = new Date().toISOString().split('T')[0];
+  const timeStr = parts[1] || '10:00';
+  const scheduled_at = `${today}T${timeStr}:00`;
+
+  const res = await api('/visits', {
+    method: 'POST',
+    body: { patient_id: patients[0].id, service: bk.svc, scheduled_at, duration_min: 60 }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Gebucht! Bestätigung wird gesendet.');
+  setTimeout(()=>{ gbStep(1); goTo('sc-home'); loadVisits(); }, 1800);
+}
+
+// ─── ETA + Map animation ──────────────────────────────────────────────────────
+let eta=12, mx=135, my=150;
+setInterval(()=>{
+  if(eta>0){ eta--; ['eta-h','eta-t'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=eta}); }
+  if(eta===0) toast('🔔 Maria K. ist angekommen!');
+},9000);
+setInterval(()=>{
+  const pin=document.getElementById('cpin'); if(!pin)return;
+  mx=Math.min(250,mx+(Math.random()*5+1)); my=Math.max(62,my-(Math.random()*4+1));
+  pin.style.left=mx+'px'; pin.style.top=my+'px';
+},3500);
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
