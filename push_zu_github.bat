@@ -57,10 +57,19 @@ REM Git Identitaet setzen
 git config --global user.email "nicklas.spelten@therapiezentrum.com"
 git config --global user.name "Nicklas Spelten"
 
+REM Git Lock-Dateien entfernen (falls vorhanden)
+if exist ".git\index.lock" (
+    echo Lock-Datei gefunden, wird entfernt...
+    del /f ".git\index.lock"
+)
+if exist ".git\HEAD.lock" (
+    del /f ".git\HEAD.lock"
+)
+
 REM Alles hinzufuegen und committen
 echo Dateien werden vorbereitet...
 git add -A
-git commit -m "Curavio App - erster Upload"
+git commit -m "Curavio Update"
 
 echo.
 echo Lade hoch zu GitHub...
@@ -71,12 +80,4 @@ git push -u origin main
 if errorlevel 1 (
     echo.
     echo Fehler beim Upload. Versuche mit --force...
-    git push -u origin main --force
-)
-
-echo.
-echo ============================================
-echo  Upload fertig!
-echo  https://github.com/nicklasspelten-netizen/Curavio
-echo ============================================
-pause
+    git push -u origin mai

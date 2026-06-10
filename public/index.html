@@ -793,7 +793,7 @@ function goTo(id) {
       sel.innerHTML = offen.map(v => {
         const d = new Date(v.scheduled_at);
         return `<div class="auftr-card" onclick="loadStempelForVisit(${v.id})" style="cursor:pointer">
-          <div style="font-weight:700;font-size:14px">${v.service}</div>
+          <div style="font-weight:700;font-size:14px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px">${v.patient_name||'Patient'} · ${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</div>
         </div>`;
       }).join('');
@@ -941,7 +941,7 @@ async function loadVisits() {
           <div class="d">${day}</div><div class="m">${date}</div>
         </div>
         <div style="flex:1">
-          <div class="wi-t">${v.service}</div>
+          <div class="wi-t">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
           <div class="wi-s">${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} · ${v.betreuer_name||'–'} · ${v.duration_min} Min.</div>
         </div>
         ${chip}
@@ -1200,7 +1200,7 @@ function renderAuftrCard(v, mode) {
     return `<div class="auftr-card" onclick="openStempel(${v.id})" style="cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
-          <div style="font-weight:700;font-size:14px">${v.service}</div>
+          <div style="font-weight:700;font-size:14px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">${pat} · ${time} Uhr</div>
         </div>
         ${statusChip}
@@ -1210,7 +1210,7 @@ function renderAuftrCard(v, mode) {
 
   if (mode === 'anfrage') {
     return `<div class="anfrage-banner">
-      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${v.service}</div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${pat} · ${date} · ${time} Uhr · ${v.duration_min || 60} Min.</div>
       <div style="display:flex;gap:10px">
         <button onclick="doAccept(${v.id})" class="btn btn-f" style="flex:1;padding:12px">✓ Annehmen</button>
@@ -1231,7 +1231,7 @@ function renderAuftrCard(v, mode) {
   return `<div class="auftr-card">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
       <div>
-        <div style="font-weight:700;font-size:15px">${v.service}</div>
+        <div style="font-weight:700;font-size:15px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:3px">${pat}</div>
       </div>
       ${statusChip}
@@ -1553,17 +1553,4 @@ setInterval(()=>{
   if(eta===0) toast('🔔 Maria K. ist angekommen!');
 },9000);
 setInterval(()=>{
-  const pin=document.getElementById('cpin'); if(!pin)return;
-  mx=Math.min(250,mx+(Math.random()*5+1)); my=Math.max(62,my-(Math.random()*4+1));
-  pin.style.left=mx+'px'; pin.style.top=my+'px';
-},3500);
-</script>
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
-}
-</script>
-</body>
-</html>
+  const pin=
