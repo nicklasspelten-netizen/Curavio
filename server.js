@@ -866,7 +866,7 @@ app.patch('/api/visits/:id/cancel', auth, async (req, res) => {
 
     await pool.query(
       `UPDATE visits SET status='abgesagt', cancelled_by=$1, cancelled_reason=$2,
-        notes = CONCAT(notes, $3) WHERE id=$4`,
+        notes = COALESCE(notes,'') || $3::text WHERE id=$4`,
       [`${role}:${uid}`, String(reason).substring(0, 500),
        `\n[Absage ${new Date().toLocaleString('de-DE')} durch ${role}: ${reason}]`, req.params.id]
     );
