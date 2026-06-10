@@ -56,8 +56,12 @@ async function initDB() {
         notes TEXT DEFAULT '',
         services TEXT DEFAULT '[]',
         location TEXT DEFAULT '',
+        actual_start TIMESTAMP,
+        actual_end TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW()
       );
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS actual_start TIMESTAMP;
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS actual_end TIMESTAMP;
       CREATE TABLE IF NOT EXISTS reports (
         id VARCHAR(50) PRIMARY KEY,
         visit_id VARCHAR(50),
@@ -328,6 +332,86 @@ app.get('/api/messages/:room_id', auth, async (req, res) => {
       [req.params.room_id]
     );
     res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== BETREUER – Alle eigenen Besuche =====
+app.get('/api/betreuer/visits', auth, async (req, res) => {
+  if (!['betreuer','admin'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
+  try {
+    const bid = req.user.role === 'admin' ? (req.query.betreuer_id || req.user.id) : req.user.id;
+    // Auch Anfragen (status = 'anfrage' oder 'offen') ohne betreuer_id anzeigen
+    const { rows } = await pool.query(`
+      SELECT v.*, p.name as patient_name, p.address as patient_address,
+        ROUND(EXTRACT(EPOCH FROM (actual_end - actual_start))/3600.0, 2) as stunden
+      FROM visits v LEFT JOIN patients p ON v.patient_id = p.id
+      WHERE v.betreuer_id = $1
+         OR (v.status IN ('anfrage','offen') AND v.betreuer_id IS NULL)
+      ORDER BY v.scheduled_at ASC
+    `, [bid]);
+    res.json(rows.map(r => ({ ...r, services: JSON.parse(r.services || '[]') })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== BETREUER CLOCKIN / CLOCKOUT / ARBEITSZEITEN =====
+app.patch('/api/visits/:id/clockin', auth, async (req, res) => {
+  if (req.user.role !== 'betreuer') return res.status(403).json({ error: 'Nur Betreuer' });
+  try {
+    const { rows } = await pool.query(
+      'UPDATE visits SET actual_start = NOW(), status = $1 WHERE id = $2 AND betreuer_id = $3 RETURNING *',
+      ['unterwegs', req.params.id, req.user.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Besuch nicht gefunden' });
+    res.json({ ...rows[0], services: JSON.parse(rows[0].services || '[]') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/visits/:id/clockout', auth, async (req, res) => {
+  if (req.user.role !== 'betreuer') return res.status(403).json({ error: 'Nur Betreuer' });
+  try {
+    const { rows } = await pool.query(
+      'UPDATE visits SET actual_end = NOW(), status = $1 WHERE id = $2 AND betreuer_id = $3 RETURNING *',
+      ['abgeschlossen', req.params.id, req.user.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Besuch nicht gefunden' });
+    res.json({ ...rows[0], services: JSON.parse(rows[0].services || '[]') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/betreuer/arbeitszeiten', auth, async (req, res) => {
+  if (!['betreuer','admin'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
+  const bid = req.user.role === 'admin' ? (req.query.betreuer_id || req.user.id) : req.user.id;
+  try {
+    const { rows } = await pool.query(`
+      SELECT v.*, p.name as patient_name,
+        ROUND(EXTRACT(EPOCH FROM (actual_end - actual_start))/3600.0, 2) as stunden
+      FROM visits v LEFT JOIN patients p ON v.patient_id = p.id
+      WHERE v.betreuer_id = $1 AND v.actual_start IS NOT NULL
+      ORDER BY v.actual_start DESC LIMIT 50
+    `, [bid]);
+    res.json(rows.map(r => ({ ...r, services: JSON.parse(r.services || '[]') })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Anfrage annehmen / ablehnen
+app.patch('/api/visits/:id/accept', auth, async (req, res) => {
+  if (!['betreuer','admin'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
+  try {
+    const { rows } = await pool.query(
+      'UPDATE visits SET status = $1, betreuer_id = $2 WHERE id = $3 RETURNING *',
+      ['geplant', req.user.id, req.params.id]
+    );
+    res.json(rows[0] ? { ...rows[0], services: JSON.parse(rows[0].services || '[]') } : { error: 'Nicht gefunden' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/visits/:id/decline', auth, async (req, res) => {
+  if (!['betreuer','admin'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
+  try {
+    const { rows } = await pool.query(
+      "UPDATE visits SET status = 'abgelehnt' WHERE id = $1 RETURNING *", [req.params.id]
+    );
+    res.json(rows[0] ? { ...rows[0], services: JSON.parse(rows[0].services || '[]') } : { error: 'Nicht gefunden' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -262,6 +262,43 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
 .sendb{width:44px;height:44px;border-radius:50%;background:var(--forest);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
 .sendb:hover{background:var(--forest-md)}
 
+/* ── Betreuer ── */
+.bh-hero{background:linear-gradient(135deg,var(--forest),var(--forest-md));padding:52px 22px 56px;position:relative;overflow:hidden}
+.bh-hero .deco1{position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(196,123,58,.15)}
+.bh-title{font-family:var(--f-serif);font-size:28px;font-weight:600;color:#fff;line-height:1.2;margin-top:4px}
+.bh-sub{font-size:13px;color:rgba(255,255,255,.55);margin-top:4px}
+.bstats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:-28px 16px 0;position:relative;z-index:3}
+.bstat{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 12px;text-align:center;box-shadow:var(--s-md)}
+.bstat-v{font-family:var(--f-serif);font-size:26px;font-weight:600;color:var(--forest);line-height:1}
+.bstat-l{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:3px}
+.auftr-card{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-lg);margin:0 16px 10px;overflow:hidden;box-shadow:0 1px 3px rgba(28,58,42,.06)}
+.auftr-h{padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+.auftr-pat{font-size:15px;font-weight:700;color:var(--text);font-family:var(--f-serif)}
+.auftr-time{font-size:12px;color:var(--muted);margin-top:2px}
+.auftr-body{padding:12px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.auftr-svc{font-size:12px;background:var(--cream);border:1px solid var(--border);border-radius:var(--r-full);padding:4px 10px;color:var(--muted);font-weight:600}
+.auftr-acts{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border)}
+.auftr-btn{flex:1;padding:10px;border:none;border-radius:var(--r-md);font-size:13px;font-weight:700;font-family:var(--f-sans);cursor:pointer;transition:all .2s}
+.auftr-btn-g{background:var(--forest);color:var(--cream-lt)}
+.auftr-btn-r{background:var(--danger-lt);color:var(--danger);border:1px solid rgba(153,27,27,.2)}
+.auftr-btn-a{background:var(--amber-lt);color:var(--amber-dk);border:1px solid rgba(196,123,58,.3)}
+.stempel-card{background:var(--cream-lt);border:1.5px solid var(--border);border-radius:var(--r-xl);margin:16px;padding:24px;box-shadow:var(--s-md);text-align:center}
+.stempel-pat{font-family:var(--f-serif);font-size:20px;font-weight:600;color:var(--text);margin-bottom:4px}
+.stempel-time{font-size:14px;color:var(--muted);margin-bottom:20px}
+.stempel-timer{font-family:var(--f-serif);font-size:52px;font-weight:600;color:var(--forest);letter-spacing:.02em;margin:16px 0}
+.stempel-btn{width:100%;padding:18px;border:none;border-radius:var(--r-lg);font-size:16px;font-weight:700;font-family:var(--f-sans);cursor:pointer;transition:all .3s}
+.stempel-btn.ein{background:var(--forest);color:var(--cream-lt)}
+.stempel-btn.aus{background:var(--amber);color:#fff}
+.az-row{display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--border)}
+.az-day{font-size:14px;font-weight:700;color:var(--text)}
+.az-info{font-size:12px;color:var(--muted);margin-top:2px}
+.az-h{font-family:var(--f-serif);font-size:22px;font-weight:600;color:var(--forest)}
+.az-total{background:var(--forest-lt);border:1.5px solid rgba(28,58,42,.2);border-radius:var(--r-lg);margin:16px;padding:18px;display:flex;align-items:center;justify-content:space-between}
+.tab-row{display:flex;gap:0;background:var(--cream-dk);border-radius:var(--r-md);padding:4px;margin:14px 16px}
+.tab-btn{flex:1;padding:8px 0;border:none;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--f-sans);cursor:pointer;background:transparent;color:var(--muted);transition:all .2s}
+.tab-btn.act{background:var(--cream-lt);color:var(--forest);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.anfrage-banner{background:var(--warn-lt);border:1.5px solid rgba(180,83,9,.25);border-radius:var(--r-lg);margin:0 16px 10px;padding:16px}
+
 /* ── Loading ── */
 .loading{position:absolute;inset:0;background:var(--forest);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;transition:opacity .4s}
 .loading.hide{opacity:0;pointer-events:none}
@@ -525,7 +562,158 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
       </div>
     </div>
 
+    <!-- ── BETREUER HOME ── -->
+    <div class="sc" id="sc-bh">
+      <div class="bh-hero">
+        <div class="deco1"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;position:relative;z-index:2">
+          <div style="display:flex;align-items:center;gap:8px">
+            <svg viewBox="0 0 40 40" fill="none" width="26" height="26"><circle cx="14" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><circle cx="26" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><path d="M20 38 C10 30 4 24 4 18 C4 13 7.5 10 12 10 C15 10 17.5 11.5 20 14 C22.5 11.5 25 10 28 10 C32.5 10 36 13 36 18 C36 24 30 30 20 38Z" stroke="#F2C98A" stroke-width="2" fill="none"/></svg>
+            <span style="font-family:var(--f-serif);font-size:18px;font-weight:600;color:#fff">Curavio</span>
+          </div>
+          <button onclick="doLogout()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Abmelden</button>
+        </div>
+        <div style="position:relative;z-index:2">
+          <div style="font-size:13px;color:rgba(255,255,255,.55);font-weight:500" id="bh-greet">Guten Tag</div>
+          <div class="bh-title" id="bh-name">–</div>
+          <div class="bh-sub">Alltagsbegleitung · Curavio</div>
+        </div>
+      </div>
+      <div class="bstats">
+        <div class="bstat"><div class="bstat-v" id="bstat-h">0</div><div class="bstat-l">Std. heute</div></div>
+        <div class="bstat"><div class="bstat-v" id="bstat-w">0</div><div class="bstat-l">Aufträge</div></div>
+        <div class="bstat"><div class="bstat-v" id="bstat-a" style="color:var(--amber)">0</div><div class="bstat-l">Anfragen</div></div>
+      </div>
+      <div style="height:20px"></div>
+      <div id="bh-aktiv" style="display:none;margin:0 16px 12px">
+        <div style="background:var(--success-lt);border:1.5px solid rgba(45,106,79,.3);border-radius:var(--r-lg);padding:16px">
+          <div style="font-size:11px;font-weight:700;color:var(--success);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">⏱ Aktiv eingestempelt</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text)" id="bh-aktiv-pat">–</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:2px" id="bh-aktiv-seit">Seit –</div>
+          <button onclick="goTo('sc-stempel')" class="btn btn-f" style="margin-top:12px;padding:11px">Zur Stempeluhr →</button>
+        </div>
+      </div>
+      <div class="stl">Heute</div>
+      <div id="bh-heute-list"><div style="padding:12px 22px;font-size:13px;color:var(--muted)">Keine Aufträge heute.</div></div>
+      <div class="stl">Schnellzugriff</div>
+      <div class="qag">
+        <div class="qab" onclick="goTo('sc-auftraege')"><div class="qa-ico" style="background:var(--forest-lt)">📋</div><div><div class="qa-lbl">Aufträge</div><div class="qa-sub">Alle Einsätze</div></div></div>
+        <div class="qab" onclick="goTo('sc-stempel')"><div class="qa-ico" style="background:var(--amber-lt)">⏱</div><div><div class="qa-lbl">Stempeln</div><div class="qa-sub">Ein- / Ausstempeln</div></div></div>
+        <div class="qab" onclick="goTo('sc-stunden')"><div class="qa-ico" style="background:var(--info-lt)">📊</div><div><div class="qa-lbl">Arbeitszeiten</div><div class="qa-sub">Wochenstunden</div></div></div>
+        <div class="qab" onclick="goTo('sc-bchat')"><div class="qa-ico" style="background:var(--cream-dk)">💬</div><div><div class="qa-lbl">Nachrichten</div><div class="qa-sub">Mit Familien</div></div></div>
+      </div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- ── BETREUER AUFTRÄGE ── -->
+    <div class="sc" id="sc-auftraege">
+      <div class="bhdr"><h2>Meine Aufträge</h2><p>Einsätze, Anfragen &amp; Planung</p></div>
+      <div class="tab-row">
+        <button class="tab-btn act" id="at-heute" onclick="auftrTab('heute')">Heute</button>
+        <button class="tab-btn" id="at-woche" onclick="auftrTab('woche')">Diese Woche</button>
+        <button class="tab-btn" id="at-anfragen" onclick="auftrTab('anfragen')">Anfragen <span id="anfr-badge" style="display:none;background:var(--amber);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px">0</span></button>
+      </div>
+      <div id="auftr-list"></div>
+    </div>
+
+    <!-- ── BETREUER STEMPEL ── -->
+    <div class="sc" id="sc-stempel">
+      <div class="bhdr"><h2>Stempeluhr</h2><p>Einsatzzeiten erfassen</p></div>
+      <div id="stempel-content">
+        <div style="padding:20px 16px 8px">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Aktueller Auftrag:</div>
+          <div id="stempel-visit-sel">
+            <div style="background:var(--cream-dk);border-radius:var(--r-lg);padding:20px;text-align:center;color:var(--muted);font-size:13px">Kein aktiver Auftrag. Wähle einen Besuch aus den Aufträgen.</div>
+          </div>
+        </div>
+        <div class="stempel-card" id="stempel-card" style="display:none">
+          <div class="stempel-pat" id="stempel-pat">–</div>
+          <div class="stempel-time" id="stempel-dt">–</div>
+          <div class="stempel-timer" id="stempel-timer">00:00:00</div>
+          <button class="stempel-btn ein" id="stempel-btn" onclick="doStempel()">▶ Einstempeln</button>
+        </div>
+      </div>
+      <div class="stl">Heute erfasste Zeiten</div>
+      <div id="stempel-heute-list"></div>
+    </div>
+
+    <!-- ── BETREUER ARBEITSZEITEN ── -->
+    <div class="sc" id="sc-stunden">
+      <div class="bhdr"><h2>Arbeitszeiten</h2><p>Erfasste Stunden &amp; Einsätze</p></div>
+      <div class="az-total">
+        <div><div style="font-size:13px;color:var(--muted)">Diese Woche</div><div class="az-h" id="az-week-h" style="font-size:28px">0,0 Std.</div></div>
+        <div style="text-align:right"><div style="font-size:13px;color:var(--muted)">Dieser Monat</div><div class="az-h" id="az-month-h" style="font-size:28px">0,0 Std.</div></div>
+      </div>
+      <div class="stl">Letzte Einträge</div>
+      <div id="az-list"><div style="padding:16px 22px;font-size:13px;color:var(--muted)">Noch keine Zeiten erfasst.</div></div>
+    </div>
+
+    <!-- ── BETREUER BERICHTE ── -->
+    <div class="sc" id="sc-brep">
+      <div class="bhdr"><h2>Besuchsberichte</h2><p>Dokumentation nach dem Einsatz</p></div>
+      <div style="padding:16px">
+        <div class="bst" style="margin-bottom:12px">Neuen Bericht schreiben</div>
+        <div class="fi">
+          <label>Patient</label>
+          <select id="brep-pat" style="padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:15px;font-family:var(--f-sans);color:var(--text);background:var(--cream);outline:none"></select>
+        </div>
+        <div class="fi">
+          <label>Bericht</label>
+          <textarea id="brep-txt" rows="5" placeholder="Was wurde heute gemacht? Wie war die Stimmung des Patienten? Besonderheiten?" style="padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:14px;font-family:var(--f-sans);color:var(--text);background:var(--cream);outline:none;resize:vertical;line-height:1.6"></textarea>
+        </div>
+        <div class="fi">
+          <label>Stimmung</label>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <button class="auftr-btn" onclick="selMood(this,1)" style="background:var(--cream-dk);border:2px solid var(--border);border-radius:var(--r-md);padding:10px">😞</button>
+            <button class="auftr-btn" onclick="selMood(this,2)" style="background:var(--cream-dk);border:2px solid var(--border);border-radius:var(--r-md);padding:10px">😐</button>
+            <button class="auftr-btn" onclick="selMood(this,3)" style="background:var(--cream-dk);border:2px solid var(--border);border-radius:var(--r-md);padding:10px" id="mood-def">😊</button>
+            <button class="auftr-btn" onclick="selMood(this,4)" style="background:var(--cream-dk);border:2px solid var(--border);border-radius:var(--r-md);padding:10px">😄</button>
+          </div>
+        </div>
+        <button class="btn btn-f" style="margin-top:8px" onclick="submitBericht()">Bericht speichern ✓</button>
+      </div>
+      <div class="stl">Meine Berichte</div>
+      <div id="brep-list"></div>
+    </div>
+
+    <!-- ── BETREUER CHAT ── -->
+    <div class="sc" id="sc-bchat" style="padding-bottom:0">
+      <div class="chdr">
+        <div class="av" style="width:44px;height:44px;font-size:16px;background:linear-gradient(135deg,var(--amber-dk),var(--amber))">F</div>
+        <div><div class="ch-n" id="bchat-name">Familie Müller</div><div class="ch-s">● Online</div></div>
+      </div>
+      <div class="cmsgs" id="bcmsgs">
+        <div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>
+      </div>
+      <div class="cinrow">
+        <input class="cinp" id="bcinp" placeholder="Nachricht …" onkeydown="if(event.key==='Enter')sendBMsg()">
+        <button class="sendb" onclick="sendBMsg()">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cream-lt)" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+
   </div><!-- sw -->
+
+  <!-- Betreuer bottom nav -->
+  <nav class="bnav" id="bnav-b" style="display:none">
+    <button class="nb" id="nb-bh" onclick="goTo('sc-bh')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span>
+    </button>
+    <button class="nb" id="nb-ba" onclick="goTo('sc-auftraege')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span>Aufträge</span><div class="nb-dot" id="anfr-nav-dot" style="display:none">!</div>
+    </button>
+    <button class="nb" id="nb-bs" onclick="goTo('sc-stempel')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Stempeln</span>
+    </button>
+    <button class="nb" id="nb-br" onclick="goTo('sc-brep')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg><span>Berichte</span>
+    </button>
+    <button class="nb" id="nb-bc" onclick="goTo('sc-bchat')">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span>
+    </button>
+  </nav>
 
   <!-- Bottom nav (hidden on login) -->
   <nav class="bnav" id="bnav" style="display:none">
@@ -572,15 +760,45 @@ function toast(m) {
   setTimeout(() => t.classList.remove('on'), 2800);
 }
 
-const navMap = {'sc-home':'nb-h','sc-track':'nb-t','sc-book':'nb-b','sc-rep':'nb-r','sc-chat':'nb-c'};
+const navMap = {
+  'sc-home':'nb-h','sc-track':'nb-t','sc-book':'nb-b','sc-rep':'nb-r','sc-chat':'nb-c',
+  'sc-bh':'nb-bh','sc-auftraege':'nb-ba','sc-stempel':'nb-bs','sc-brep':'nb-br','sc-bchat':'nb-bc'
+};
 function goTo(id) {
   document.querySelectorAll('.sc').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(n => n.classList.remove('active'));
   const s = document.getElementById(id);
   if (s) { s.classList.add('active'); s.scrollTop = 0; }
   const nb = navMap[id];
-  if (nb) document.getElementById(nb).classList.add('active');
+  if (nb) { const el = document.getElementById(nb); if (el) el.classList.add('active'); }
   if (id === 'sc-chat') { const d = document.getElementById('chat-dot'); if (d) d.style.display = 'none'; }
+  // Betreuer-Seiten initialisieren
+  if (id === 'sc-bchat') loadBetreuerMessages();
+  if (id === 'sc-brep')  { initBericht(); loadBetreuerBerichte(); }
+  if (id === 'sc-stunden') loadArbeitszeiten();
+  if (id === 'sc-stempel' && !stempelVisit) {
+    api('/betreuer/visits').then(visits => {
+      if (!Array.isArray(visits)) return;
+      const offen = visits.filter(v => ['geplant','bestätigt','unterwegs'].includes(v.status));
+      const sel   = document.getElementById('stempel-visit-sel');
+      const card  = document.getElementById('stempel-card');
+      if (!sel || !card) return;
+      const aktiv = offen.find(v => v.actual_start && !v.actual_end);
+      if (aktiv) { loadStempelForVisit(aktiv.id); return; }
+      if (!offen.length) {
+        sel.innerHTML = '<div style="background:var(--cream-dk);border-radius:var(--r-lg);padding:20px;text-align:center;color:var(--muted);font-size:13px">Keine aktiven Aufträge.</div>';
+        sel.style.display = 'block'; card.style.display = 'none'; return;
+      }
+      sel.style.display = 'block'; card.style.display = 'none';
+      sel.innerHTML = offen.map(v => {
+        const d = new Date(v.scheduled_at);
+        return `<div class="auftr-card" onclick="loadStempelForVisit(${v.id})" style="cursor:pointer">
+          <div style="font-weight:700;font-size:14px">${v.service}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${v.patient_name||'Patient'} · ${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</div>
+        </div>`;
+      }).join('');
+    });
+  }
 }
 
 async function api(path, opts = {}) {
@@ -620,18 +838,39 @@ function doLogout() {
   localStorage.removeItem('curavio_token');
   localStorage.removeItem('curavio_user');
   if (ws) { ws.close(); ws = null; }
+  stopStempelTimer();
   document.getElementById('bnav').style.display = 'none';
+  document.getElementById('bnav-b').style.display = 'none';
   document.querySelectorAll('.sc').forEach(s => s.classList.remove('active'));
   document.getElementById('sc-login').classList.add('active');
 }
 
 function showApp() {
-  document.getElementById('bnav').style.display = 'flex';
-  goTo('sc-home');
-  const greet = document.getElementById('h-greet');
-  const h = new Date().getHours();
-  greet.textContent = (h < 12 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend') + ', ' + (USER?.name?.split(' ')[0] || '') + ' 👋';
   connectWS();
+  if (USER?.role === 'betreuer') {
+    showBetreuerApp();
+  } else {
+    document.getElementById('bnav').style.display = 'flex';
+    document.getElementById('bnav-b').style.display = 'none';
+    goTo('sc-home');
+    const greet = document.getElementById('h-greet');
+    const h = new Date().getHours();
+    greet.textContent = (h < 12 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend') + ', ' + (USER?.name?.split(' ')[0] || '') + ' 👋';
+  }
+}
+
+function showBetreuerApp() {
+  document.getElementById('bnav').style.display = 'none';
+  document.getElementById('bnav-b').style.display = 'flex';
+  goTo('sc-bh');
+  const h = new Date().getHours();
+  const el = document.getElementById('bh-greet');
+  if (el) el.textContent = h < 12 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend';
+  const nm = document.getElementById('bh-name');
+  if (nm) nm.textContent = USER?.name || 'Betreuer';
+  loadBetreuerHome();
+  loadAuftraege();
+  loadArbeitszeiten();
 }
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
@@ -641,8 +880,15 @@ function connectWS() {
   ws.onopen  = () => ws.send(JSON.stringify({ type: 'auth', token: TOKEN }));
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
-    if (msg.type === 'chat') appendMsg(msg);
-    if (msg.type === 'visit_update') loadVisits();
+    if (msg.type === 'chat') {
+      if (USER?.role === 'betreuer') appendBMsg(msg);
+      else appendMsg(msg);
+    }
+    if (msg.type === 'visit_update') {
+      if (USER?.role === 'betreuer') { loadBetreuerHome(); loadAuftraege(); }
+      else loadVisits();
+    }
+    if (msg.type === 'new_assignment') { loadBetreuerHome(); loadAuftraege(); toast('📋 Neuer Auftrag eingegangen!'); showAnfragenBadge(); }
     if (msg.type === 'new_report') { loadReports(); toast('📋 Neuer Besuchsbericht verfügbar'); }
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
@@ -832,6 +1078,472 @@ async function doBook() {
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Gebucht! Bestätigung wird gesendet.');
   setTimeout(()=>{ gbStep(1); goTo('sc-home'); loadVisits(); }, 1800);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BETREUER – Daten laden
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let bAktiverBesuch = null; // aktuell eingestempelter Besuch
+let bStempelInterval = null;
+
+async function loadBetreuerHome() {
+  const visits = await api('/betreuer/visits');
+  if (!Array.isArray(visits)) return;
+
+  const today = new Date().toDateString();
+  const todayVisits = visits.filter(v => new Date(v.scheduled_at).toDateString() === today);
+  const anfragen = visits.filter(v => v.status === 'anfrage');
+  const woche = visits.filter(v => {
+    const d = new Date(v.scheduled_at);
+    const now = new Date();
+    const start = new Date(now); start.setDate(now.getDate() - now.getDay() + 1);
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    return d >= start && d < end;
+  });
+
+  // Stats
+  document.getElementById('bstat-w').textContent = woche.length;
+  document.getElementById('bstat-a').textContent = anfragen.length;
+
+  // Anfragen-Badge
+  if (anfragen.length > 0) showAnfragenBadge(anfragen.length);
+
+  // Heute-Liste
+  const el = document.getElementById('bh-heute-list');
+  if (!todayVisits.length) {
+    el.innerHTML = '<div style="padding:12px 22px;font-size:13px;color:var(--muted)">Keine Aufträge heute.</div>';
+  } else {
+    el.innerHTML = todayVisits.map(v => renderAuftrCard(v, 'mini')).join('');
+  }
+
+  // Aktiv eingestempelt?
+  const aktiv = visits.find(v => v.actual_start && !v.actual_end);
+  const bhAktiv = document.getElementById('bh-aktiv');
+  if (aktiv) {
+    bAktiverBesuch = aktiv;
+    bhAktiv.style.display = 'block';
+    document.getElementById('bh-aktiv-pat').textContent = aktiv.patient_name || 'Patient';
+    document.getElementById('bh-aktiv-seit').textContent = 'Seit ' + new Date(aktiv.actual_start).toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'}) + ' Uhr';
+    // Stunden heute
+    const secs = (Date.now() - new Date(aktiv.actual_start).getTime()) / 1000;
+    document.getElementById('bstat-h').textContent = (secs/3600).toFixed(1);
+  } else {
+    bhAktiv.style.display = 'none';
+    // Stunden heute aus abgeschlossenen
+    const h = visits.filter(v => v.actual_end && new Date(v.actual_end).toDateString() === today)
+      .reduce((s, v) => s + parseFloat(v.stunden || 0), 0);
+    document.getElementById('bstat-h').textContent = h.toFixed(1);
+  }
+}
+
+// Betreuer-eigene Aufträge holen (neue Route)
+async function bGetVisits() {
+  return await api('/betreuer/visits');
+}
+
+let bAuftrTab = 'heute';
+function auftrTab(tab) {
+  bAuftrTab = tab;
+  ['heute','woche','anfragen'].forEach(t => {
+    const btn = document.getElementById('at-' + t);
+    if (btn) btn.className = 'tab-btn' + (t === tab ? ' act' : '');
+  });
+  loadAuftraege();
+}
+
+async function loadAuftraege() {
+  const visits = await api('/betreuer/visits');
+  if (!Array.isArray(visits)) return;
+
+  const el = document.getElementById('auftr-list');
+  const now = new Date();
+  const today = now.toDateString();
+
+  let list;
+  if (bAuftrTab === 'heute') {
+    list = visits.filter(v => new Date(v.scheduled_at).toDateString() === today && v.status !== 'anfrage');
+  } else if (bAuftrTab === 'woche') {
+    const start = new Date(now); start.setDate(now.getDate() - now.getDay() + 1); start.setHours(0,0,0,0);
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    list = visits.filter(v => { const d = new Date(v.scheduled_at); return d >= start && d < end && v.status !== 'anfrage'; });
+  } else {
+    list = visits.filter(v => v.status === 'anfrage' || v.status === 'offen');
+    // Badge aktualisieren
+    const badge = document.getElementById('anfr-badge');
+    if (badge) { badge.textContent = list.length; badge.style.display = list.length ? 'inline' : 'none'; }
+  }
+
+  if (!list.length) {
+    el.innerHTML = `<div style="padding:20px 22px;font-size:13px;color:var(--muted)">${bAuftrTab === 'anfragen' ? 'Keine offenen Anfragen.' : 'Keine Aufträge.'}</div>`;
+  } else {
+    el.innerHTML = list.map(v => renderAuftrCard(v, bAuftrTab === 'anfragen' ? 'anfrage' : 'normal')).join('');
+  }
+}
+
+function renderAuftrCard(v, mode) {
+  const d = new Date(v.scheduled_at);
+  const time = d.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+  const date = d.toLocaleDateString('de-DE', {weekday:'short', day:'2-digit', month:'2-digit'});
+  const pat  = v.patient_name || 'Patient';
+
+  const statusChip = {
+    'geplant':       '<span class="chip chip-b">Geplant</span>',
+    'bestätigt':     '<span class="chip chip-b">Bestätigt</span>',
+    'unterwegs':     '<span class="chip chip-f">Aktiv</span>',
+    'abgeschlossen': '<span class="chip chip-g">Fertig</span>',
+    'anfrage':       '<span class="chip" style="background:var(--amber-lt);color:var(--amber-dk)">Anfrage</span>',
+    'offen':         '<span class="chip" style="background:var(--amber-lt);color:var(--amber-dk)">Offen</span>',
+  }[v.status] || '';
+
+  if (mode === 'mini') {
+    return `<div class="auftr-card" onclick="openStempel(${v.id})" style="cursor:pointer">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-weight:700;font-size:14px">${v.service}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${pat} · ${time} Uhr</div>
+        </div>
+        ${statusChip}
+      </div>
+    </div>`;
+  }
+
+  if (mode === 'anfrage') {
+    return `<div class="anfrage-banner">
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${v.service}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${pat} · ${date} · ${time} Uhr · ${v.duration_min || 60} Min.</div>
+      <div style="display:flex;gap:10px">
+        <button onclick="doAccept(${v.id})" class="btn btn-f" style="flex:1;padding:12px">✓ Annehmen</button>
+        <button onclick="doDecline(${v.id})" style="flex:1;background:var(--cream-dk);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:12px;font-size:14px;font-weight:600;cursor:pointer;color:var(--muted)">✕ Ablehnen</button>
+      </div>
+    </div>`;
+  }
+
+  // normal
+  const canClockin = ['geplant','bestätigt'].includes(v.status);
+  const canClockout = v.status === 'unterwegs' && v.actual_start && !v.actual_end;
+  const stempelBtn = canClockin
+    ? `<button onclick="doClockIn(${v.id})" class="btn btn-f" style="padding:10px;font-size:13px">▶ Einstempeln</button>`
+    : canClockout
+    ? `<button onclick="doClockOut(${v.id})" style="background:var(--error-lt,#fff0f0);border:1.5px solid rgba(200,50,50,.3);color:var(--error,#c00);border-radius:var(--r-lg);padding:10px;font-size:13px;font-weight:700;cursor:pointer;width:100%">■ Ausstempeln</button>`
+    : '';
+
+  return `<div class="auftr-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+      <div>
+        <div style="font-weight:700;font-size:15px">${v.service}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">${pat}</div>
+      </div>
+      ${statusChip}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      <span class="chip chip-b" style="background:var(--cream-dk)">${date}</span>
+      <span class="chip chip-b" style="background:var(--cream-dk)">${time} Uhr</span>
+      <span class="chip chip-b" style="background:var(--cream-dk)">${v.duration_min || 60} Min.</span>
+    </div>
+    ${stempelBtn}
+  </div>`;
+}
+
+async function doAccept(id) {
+  await api('/visits/' + id + '/accept', { method: 'PATCH' });
+  toast('✅ Auftrag angenommen');
+  loadAuftraege(); loadBetreuerHome();
+}
+
+async function doDecline(id) {
+  await api('/visits/' + id + '/decline', { method: 'PATCH' });
+  toast('Auftrag abgelehnt');
+  loadAuftraege(); loadBetreuerHome();
+}
+
+function showAnfragenBadge(n) {
+  const dot = document.getElementById('anfr-nav-dot');
+  if (dot) dot.style.display = (n > 0) ? 'block' : 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BETREUER – Stempeluhr
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let stempelVisit = null;
+let stempelStart = null;
+let bTimerInt    = null;
+
+function openStempel(visitId) {
+  goTo('sc-stempel');
+  loadStempelForVisit(visitId);
+}
+
+async function loadStempelForVisit(visitId) {
+  const visits = await api('/betreuer/visits');
+  if (!Array.isArray(visits)) return;
+  const v = visits.find(x => x.id === visitId);
+  if (!v) return;
+  stempelVisit = v;
+
+  const card = document.getElementById('stempel-card');
+  const sel  = document.getElementById('stempel-visit-sel');
+  if (card) card.style.display = 'block';
+  if (sel)  sel.style.display  = 'none';
+
+  const d = new Date(v.scheduled_at);
+  document.getElementById('stempel-pat').textContent = v.patient_name || 'Patient';
+  document.getElementById('stempel-dt').textContent  = d.toLocaleDateString('de-DE',{weekday:'long',day:'2-digit',month:'long'}) + ' · ' + d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) + ' Uhr';
+
+  const btn = document.getElementById('stempel-btn');
+  if (v.actual_start && !v.actual_end) {
+    // Bereits eingestempelt
+    stempelStart = new Date(v.actual_start);
+    startStempelTimer();
+    if (btn) { btn.textContent = '■ Ausstempeln'; btn.className = 'stempel-btn aus'; }
+  } else if (v.actual_end) {
+    if (btn) { btn.textContent = '✓ Abgeschlossen'; btn.className = 'stempel-btn ein'; btn.disabled = true; }
+    const diff = new Date(v.actual_end) - new Date(v.actual_start);
+    document.getElementById('stempel-timer').textContent = fmtDuration(diff);
+  } else {
+    stempelStart = null;
+    stopStempelTimer();
+    document.getElementById('stempel-timer').textContent = '00:00:00';
+    if (btn) { btn.textContent = '▶ Einstempeln'; btn.className = 'stempel-btn ein'; btn.disabled = false; }
+  }
+
+  loadStempelHeute(visits);
+}
+
+function startStempelTimer() {
+  stopStempelTimer();
+  bTimerInt = setInterval(() => {
+    if (!stempelStart) return;
+    const diff = Date.now() - stempelStart.getTime();
+    const el = document.getElementById('stempel-timer');
+    if (el) el.textContent = fmtDuration(diff);
+  }, 1000);
+}
+
+function stopStempelTimer() {
+  if (bTimerInt) { clearInterval(bTimerInt); bTimerInt = null; }
+}
+
+function fmtDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h, m, sec].map(x => String(x).padStart(2,'0')).join(':');
+}
+
+async function doStempel() {
+  if (!stempelVisit) return;
+  const btn = document.getElementById('stempel-btn');
+  if (stempelStart) {
+    // Ausstempeln
+    await doClockOut(stempelVisit.id);
+  } else {
+    // Einstempeln
+    await doClockIn(stempelVisit.id);
+  }
+}
+
+async function doClockIn(id) {
+  const res = await api('/visits/' + id + '/clockin', { method: 'PATCH' });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Eingestempelt!');
+  stempelStart = new Date(res.actual_start);
+  startStempelTimer();
+  const btn = document.getElementById('stempel-btn');
+  if (btn) { btn.textContent = '■ Ausstempeln'; btn.className = 'stempel-btn aus'; }
+  bAktiverBesuch = res;
+  loadBetreuerHome();
+}
+
+async function doClockOut(id) {
+  const res = await api('/visits/' + id + '/clockout', { method: 'PATCH' });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Ausgestempelt! ' + (res.stunden ? res.stunden + ' Std. erfasst.' : ''));
+  stopStempelTimer();
+  stempelStart = null;
+  bAktiverBesuch = null;
+  const btn = document.getElementById('stempel-btn');
+  if (btn) { btn.textContent = '✓ Abgeschlossen'; btn.disabled = true; }
+  const diff = new Date(res.actual_end) - new Date(res.actual_start);
+  const el = document.getElementById('stempel-timer');
+  if (el) el.textContent = fmtDuration(diff);
+  loadBetreuerHome(); loadArbeitszeiten();
+}
+
+function loadStempelHeute(visits) {
+  const el = document.getElementById('stempel-heute-list');
+  if (!el) return;
+  const today = new Date().toDateString();
+  const done  = visits.filter(v => v.actual_end && new Date(v.actual_end).toDateString() === today);
+  if (!done.length) {
+    el.innerHTML = '<div style="padding:12px 22px;font-size:13px;color:var(--muted)">Noch keine Zeiten heute.</div>';
+    return;
+  }
+  el.innerHTML = done.map(v => {
+    const start = new Date(v.actual_start).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    const end   = new Date(v.actual_end).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    const diff  = new Date(v.actual_end) - new Date(v.actual_start);
+    return `<div class="az-row">
+      <div><div style="font-weight:600;font-size:14px">${v.patient_name||'Patient'}</div><div style="font-size:12px;color:var(--muted)">${start} – ${end} Uhr</div></div>
+      <div class="az-h">${fmtDuration(diff)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BETREUER – Arbeitszeiten
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadArbeitszeiten() {
+  const rows = await api('/betreuer/arbeitszeiten');
+  if (!Array.isArray(rows)) return;
+
+  // Woche / Monat summieren
+  const now = new Date();
+  const startW = new Date(now); startW.setDate(now.getDate() - now.getDay() + 1); startW.setHours(0,0,0,0);
+  const startM = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let sumW = 0, sumM = 0;
+  rows.forEach(r => {
+    const d = new Date(r.actual_start);
+    const h = parseFloat(r.stunden || 0);
+    if (d >= startW) sumW += h;
+    if (d >= startM) sumM += h;
+  });
+
+  const wEl = document.getElementById('az-week-h');
+  const mEl = document.getElementById('az-month-h');
+  if (wEl) wEl.textContent = sumW.toFixed(1).replace('.',',') + ' Std.';
+  if (mEl) mEl.textContent = sumM.toFixed(1).replace('.',',') + ' Std.';
+
+  const el = document.getElementById('az-list');
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = '<div style="padding:16px 22px;font-size:13px;color:var(--muted)">Noch keine Zeiten erfasst.</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(r => {
+    const d     = new Date(r.actual_start);
+    const start = d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    const end   = r.actual_end ? new Date(r.actual_end).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '–';
+    const date  = d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'});
+    return `<div class="az-row">
+      <div>
+        <div style="font-weight:600;font-size:14px">${r.patient_name||'Patient'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${date} · ${start}–${end} Uhr</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${r.service||''}</div>
+      </div>
+      <div class="az-h">${parseFloat(r.stunden||0).toFixed(1).replace('.',',')} Std.</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BETREUER – Chat
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadBetreuerMessages() {
+  const msgs = await api('/messages/visit_v1');
+  const box = document.getElementById('bcmsgs');
+  if (!box) return;
+  msgs.forEach(m => appendBMsg(m, false));
+  box.scrollTop = box.scrollHeight;
+}
+
+function appendBMsg(m, scroll = true) {
+  const box = document.getElementById('bcmsgs');
+  if (!box) return;
+  const isOut = m.sender_id === USER?.id;
+  const ts = new Date(m.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  const div = document.createElement('div');
+  div.className = 'msg ' + (isOut ? 'out' : 'in') + ' fu';
+  div.innerHTML = `<div class="bub">${m.content}</div><div class="mts">${ts}</div>`;
+  box.appendChild(div);
+  if (scroll) box.scrollTop = box.scrollHeight;
+}
+
+async function sendBMsg() {
+  const inp = document.getElementById('bcinp');
+  if (!inp) return;
+  const txt = inp.value.trim();
+  if (!txt) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type:'chat', room_id:'visit_v1', content: txt }));
+    inp.value = '';
+  } else {
+    // Demo-Fallback
+    const box = document.getElementById('bcmsgs');
+    const ts  = new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    const d1  = document.createElement('div');
+    d1.className='msg out fu';
+    d1.innerHTML=`<div class="bub">${txt}</div><div class="mts">${ts}</div>`;
+    box.appendChild(d1); inp.value=''; box.scrollTop=box.scrollHeight;
+    setTimeout(() => {
+      const d2=document.createElement('div');
+      d2.className='msg in fu';
+      d2.innerHTML=`<div class="bub">${demoReplies[Math.floor(Math.random()*demoReplies.length)]}</div><div class="mts">${ts}</div>`;
+      box.appendChild(d2); box.scrollTop=box.scrollHeight;
+    },1400);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BETREUER – Berichte
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let bRepMood = 3;
+
+function selMood(el, m) {
+  bRepMood = m;
+  document.querySelectorAll('.auftr-btn').forEach(b => b.style.border = '2px solid var(--border)');
+  el.style.border = '2px solid var(--forest)';
+}
+
+async function initBericht() {
+  const patients = await api('/patients');
+  const sel = document.getElementById('brep-pat');
+  if (!sel) return;
+  sel.innerHTML = patients.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+async function submitBericht() {
+  const pid = document.getElementById('brep-pat')?.value;
+  const txt = document.getElementById('brep-txt')?.value?.trim();
+  if (!pid || !txt) { toast('Bitte Patient und Bericht ausfüllen.'); return; }
+  const res = await api('/reports', {
+    method: 'POST',
+    body: { patient_id: pid, content: txt, mood: bRepMood, tasks_done: [] }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Bericht gespeichert');
+  document.getElementById('brep-txt').value = '';
+  loadBetreuerBerichte();
+}
+
+async function loadBetreuerBerichte() {
+  const reports = await api('/reports');
+  const el = document.getElementById('brep-list');
+  if (!el) return;
+  if (!reports.length) {
+    el.innerHTML = '<div style="padding:16px 22px;font-size:13px;color:var(--muted)">Noch keine Berichte.</div>';
+    return;
+  }
+  const moods = ['😞','😐','😊','😄'];
+  el.innerHTML = reports.slice(0, 10).map(r => {
+    const d = new Date(r.created_at||r.scheduled_at);
+    const date = d.toLocaleDateString('de-DE',{day:'2-digit',month:'short'});
+    return `<div class="auftr-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-weight:600;font-size:14px">${r.patient_name||'Patient'}</div>
+        <span style="font-size:18px">${moods[(r.mood||3)-1]}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${date}</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.5">${r.content}</div>
+    </div>`;
+  }).join('');
 }
 
 // ─── ETA + Map animation ──────────────────────────────────────────────────────
