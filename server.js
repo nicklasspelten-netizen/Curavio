@@ -59,7 +59,7 @@ const pool = new Pool({
 
 app.set('trust proxy', 1); // Render-Proxy: echte Client-IP für Audit-Log & Rate-Limit
 app.use(cors());
-app.use(express.json({ limit: '2mb' })); // Signatur-PNGs (Base64) brauchen etwas Platz
+app.use(express.json({ limit: '10mb' })); // Signatur-PNGs + Personalakten-Dokumente (Base64, max 5 MB/Datei)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ===== DSGVO: Rate-Limiting =====
@@ -180,6 +180,12 @@ async function initDB() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_logins INTEGER DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;
+      -- HR-Stammdaten (Personalakte Betreuer)
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS hired_at DATE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS employment_type VARCHAR(50) DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS hr_notes TEXT DEFAULT '';
+      ALTER TABLE users ALTER COLUMN tax_id TYPE TEXT;
 
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS pflegegrad INTEGER DEFAULT 1;
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS birth_date DATE;
@@ -331,6 +337,22 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS settings (
         key VARCHAR(100) PRIMARY KEY,
         value TEXT DEFAULT ''
+      );
+
+      -- Personalakte: Dokumente (Zeugnisse, Führungszeugnis, Nachweise) — in DB,
+      -- da das Render-Dateisystem bei jedem Deploy geleert wird
+      CREATE TABLE IF NOT EXISTS documents (
+        id VARCHAR(50) PRIMARY KEY,
+        user_id VARCHAR(50),
+        patient_id VARCHAR(50),
+        name VARCHAR(255) NOT NULL,
+        doc_type VARCHAR(100) DEFAULT 'sonstiges',
+        mime VARCHAR(100) DEFAULT 'application/octet-stream',
+        data TEXT,
+        size_kb INTEGER DEFAULT 0,
+        valid_until DATE,
+        uploaded_by VARCHAR(50),
+        created_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
@@ -634,35 +656,49 @@ app.get('/api/patients', auth, async (req, res) => {
 
 app.post('/api/patients', auth, async (req, res) => {
   if (!['admin', 'betreuer'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
-  const { name, address, care_level, pflegegrad, betreuer_id, notes, angehoerige_ids, phone, insurance, insurance_number, emergency_contact, birth_date } = req.body;
+  const { name, address, care_level, pflegegrad, betreuer_id, notes, angehoerige_ids, phone, insurance,
+          insurance_number, emergency_contact, birth_date, preferred_time_from, preferred_time_to } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name erforderlich' });
   try {
     const id = gid('p');
     const pg = pflegegrad || care_level || 1;
     const { rows } = await pool.query(
-      `INSERT INTO patients (id, name, address, care_level, pflegegrad, betreuer_id, notes, angehoerige_ids, phone, insurance, insurance_number, emergency_contact, birth_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      `INSERT INTO patients (id, name, address, care_level, pflegegrad, betreuer_id, notes, angehoerige_ids,
+         phone, insurance, insurance_number, emergency_contact, birth_date, preferred_time_from, preferred_time_to)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [id, name, address || '', pg, pg, betreuer_id || (req.user.role === 'betreuer' ? req.user.id : null), notes || '',
-       JSON.stringify(angehoerige_ids || []), encryptField(phone || ''), insurance || '', encryptField(insurance_number || ''), emergency_contact || '', birth_date || null]
+       JSON.stringify(angehoerige_ids || []), encryptField(phone || ''), insurance || '', encryptField(insurance_number || ''),
+       emergency_contact || '', birth_date || null, preferred_time_from || null, preferred_time_to || null]
     );
     await getOrCreateFreibetrag(id, new Date().getFullYear());
     await audit(req, 'create_patient', 'patient', id);
+    // Adresse asynchron für die Routenplanung geocodieren
+    if (address) {
+      setImmediate(async () => {
+        const c = await geocodeAddress(address);
+        if (c) await pool.query('UPDATE patients SET lat=$1, lng=$2, address_geocoded=true WHERE id=$3', [c.lat, c.lng, id]).catch(() => {});
+      });
+    }
     res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]'), phone: phone || '', insurance_number: insurance_number || '' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.patch('/api/patients/:id', auth, async (req, res) => {
   if (!['admin', 'betreuer'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
-  const { name, address, care_level, pflegegrad, notes, angehoerige_ids, phone, insurance, insurance_number, emergency_contact, betreuer_id, birth_date } = req.body;
+  const { name, address, care_level, pflegegrad, notes, angehoerige_ids, phone, insurance, insurance_number,
+          emergency_contact, betreuer_id, birth_date, preferred_time_from, preferred_time_to } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE patients SET name=COALESCE($1,name), address=COALESCE($2,address), care_level=COALESCE($3,care_level),
        pflegegrad=COALESCE($4,pflegegrad), notes=COALESCE($5,notes), angehoerige_ids=COALESCE($6,angehoerige_ids),
        phone=COALESCE($7,phone), insurance=COALESCE($8,insurance), insurance_number=COALESCE($9,insurance_number),
-       emergency_contact=COALESCE($10,emergency_contact), betreuer_id=COALESCE($11,betreuer_id), birth_date=COALESCE($12,birth_date)
-       WHERE id=$13 RETURNING *`,
+       emergency_contact=COALESCE($10,emergency_contact), betreuer_id=COALESCE($11,betreuer_id), birth_date=COALESCE($12,birth_date),
+       preferred_time_from=COALESCE($13,preferred_time_from), preferred_time_to=COALESCE($14,preferred_time_to),
+       address_geocoded = CASE WHEN $2 IS NOT NULL AND $2 != address THEN false ELSE address_geocoded END
+       WHERE id=$15 RETURNING *`,
       [name, address, care_level, pflegegrad, notes, angehoerige_ids ? JSON.stringify(angehoerige_ids) : null,
        phone != null ? encryptField(phone) : null, insurance, insurance_number != null ? encryptField(insurance_number) : null,
-       emergency_contact, betreuer_id, birth_date, req.params.id]
+       emergency_contact, betreuer_id, birth_date, preferred_time_from, preferred_time_to, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
     await audit(req, 'update_patient', 'patient', req.params.id);
@@ -1717,13 +1753,23 @@ app.get('/api/admin/dashboard', auth, adminOnly, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Alle Betreuer mit Auslastung
+// Steuer-ID maskieren (analog IBAN)
+const maskTaxId = (v) => {
+  const d = decryptField(v);
+  return d && d.length > 3 ? '•••' + d.slice(-3) : d || '';
+};
+
+// Alle Betreuer mit Auslastung + Personalakten-Status (Dokumente, Ablauf-Warnungen)
 app.get('/api/admin/betreuer', auth, adminOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT u.id, u.name, u.email, u.phone, u.hourly_rate, u.qualifications, u.active, u.iban, u.tax_id,
+        u.address, u.shift_start, u.max_hours_per_day, u.birth_date, u.hired_at, u.employment_type, u.hr_notes,
         COALESCE(w.stunden, 0) as stunden_woche,
-        COALESCE(o.offene, 0) as offene_besuche
+        COALESCE(o.offene, 0) as offene_besuche,
+        COALESCE(d.docs, 0) as docs_anzahl,
+        COALESCE(d.abgelaufen, 0) as docs_abgelaufen,
+        COALESCE(d.bald, 0) as docs_bald_ablaufend
       FROM users u
       LEFT JOIN (
         SELECT betreuer_id, ROUND(SUM(EXTRACT(EPOCH FROM (actual_end - actual_start))/3600.0)::numeric, 1) as stunden
@@ -1734,34 +1780,107 @@ app.get('/api/admin/betreuer', auth, adminOnly, async (req, res) => {
         SELECT betreuer_id, COUNT(*) as offene FROM visits
         WHERE status IN ('geplant','bestätigt','unterwegs') GROUP BY betreuer_id
       ) o ON o.betreuer_id = u.id
+      LEFT JOIN (
+        SELECT user_id, COUNT(*) as docs,
+          COUNT(*) FILTER (WHERE valid_until IS NOT NULL AND valid_until < CURRENT_DATE) as abgelaufen,
+          COUNT(*) FILTER (WHERE valid_until >= CURRENT_DATE AND valid_until < CURRENT_DATE + 30) as bald
+        FROM documents GROUP BY user_id
+      ) d ON d.user_id = u.id
       WHERE u.role = 'betreuer'
       ORDER BY u.name
     `);
     res.json(rows.map(r => ({
       ...r,
-      iban: maskIban(r.iban), // DSGVO: IBAN nur maskiert in Listen
+      iban: maskIban(r.iban),     // DSGVO: nur maskiert in Listen
+      tax_id: maskTaxId(r.tax_id),
       qualifications: (() => { try { return JSON.parse(r.qualifications || '[]'); } catch { return []; } })(),
       auslastung: Math.min(100, Math.round(num(r.stunden_woche) / 40 * 100))
     })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Betreuer-Profil bearbeiten (Stundensatz, Qualifikationen, IBAN verschlüsselt ...)
+// Betreuer-Profil bearbeiten (Personalakte: Stammdaten, Beschäftigung, Finanzen)
 app.patch('/api/admin/betreuer/:id', auth, adminOnly, async (req, res) => {
-  const { name, phone, hourly_rate, qualifications, active, iban, tax_id, shift_start, max_hours_per_day, address } = req.body;
+  const { name, phone, hourly_rate, qualifications, active, iban, tax_id, shift_start, max_hours_per_day,
+          address, birth_date, hired_at, employment_type, hr_notes } = req.body;
   try {
-    // Maskierte IBAN aus dem Frontend nicht zurückschreiben
+    // Maskierte Werte aus dem Frontend nicht zurückschreiben
     const ibanVal = (iban != null && !String(iban).startsWith('••••')) ? encryptField(iban) : null;
+    const taxVal = (tax_id != null && !String(tax_id).startsWith('•••')) ? encryptField(tax_id) : null;
     const { rows } = await pool.query(`
       UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone), hourly_rate=COALESCE($3,hourly_rate),
         qualifications=COALESCE($4,qualifications), active=COALESCE($5,active), iban=COALESCE($6,iban), tax_id=COALESCE($7,tax_id),
-        shift_start=COALESCE($8,shift_start), max_hours_per_day=COALESCE($9,max_hours_per_day), address=COALESCE($10,address)
-      WHERE id=$11 AND role='betreuer' RETURNING id, name, email, phone, hourly_rate, qualifications, active, iban, tax_id, shift_start, max_hours_per_day, address
-    `, [name, phone, hourly_rate, qualifications ? JSON.stringify(qualifications) : null, active, ibanVal, tax_id,
-        shift_start, max_hours_per_day, address, req.params.id]);
+        shift_start=COALESCE($8,shift_start), max_hours_per_day=COALESCE($9,max_hours_per_day), address=COALESCE($10,address),
+        birth_date=COALESCE($11,birth_date), hired_at=COALESCE($12,hired_at),
+        employment_type=COALESCE($13,employment_type), hr_notes=COALESCE($14,hr_notes)
+      WHERE id=$15 AND role='betreuer'
+      RETURNING id, name, email, phone, hourly_rate, qualifications, active, iban, tax_id, shift_start,
+                max_hours_per_day, address, birth_date, hired_at, employment_type, hr_notes
+    `, [name, phone, hourly_rate, qualifications ? JSON.stringify(qualifications) : null, active, ibanVal, taxVal,
+        shift_start, max_hours_per_day, address, birth_date, hired_at, employment_type, hr_notes, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Betreuer nicht gefunden' });
     await audit(req, 'update_betreuer_profile', 'user', req.params.id);
-    res.json({ ...rows[0], iban: maskIban(rows[0].iban) });
+    res.json({ ...rows[0], iban: maskIban(rows[0].iban), tax_id: maskTaxId(rows[0].tax_id) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══ Personalakte: Dokumente (Zeugnisse, Führungszeugnis, Nachweise) ═══
+const DOC_MAX_KB = 5 * 1024;
+
+app.post('/api/admin/documents', auth, adminOnly, async (req, res) => {
+  const { user_id, patient_id, name, doc_type, data, valid_until } = req.body;
+  if (!name || !data || (!user_id && !patient_id)) return res.status(400).json({ error: 'name, data und user_id/patient_id erforderlich' });
+  if (!String(data).startsWith('data:')) return res.status(400).json({ error: 'data muss eine Base64-Data-URL sein' });
+  try {
+    const mime = data.substring(5, data.indexOf(';')) || 'application/octet-stream';
+    const b64 = data.split(',')[1] || '';
+    const sizeKb = Math.round(b64.length * 0.75 / 1024);
+    if (sizeKb > DOC_MAX_KB) return res.status(400).json({ error: `Datei zu groß (${sizeKb} KB, max. ${DOC_MAX_KB} KB)` });
+    const { rows } = await pool.query(`
+      INSERT INTO documents (id, user_id, patient_id, name, doc_type, mime, data, size_kb, valid_until, uploaded_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING id, user_id, patient_id, name, doc_type, mime, size_kb, valid_until, created_at
+    `, [gid('doc'), user_id || null, patient_id || null, String(name).substring(0, 250),
+        doc_type || 'sonstiges', mime, data, sizeKb, valid_until || null, req.user.id]);
+    await audit(req, 'document_uploaded', 'document', rows[0].id);
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/documents', auth, adminOnly, async (req, res) => {
+  const { user_id, patient_id } = req.query;
+  try {
+    const conds = [], params = [];
+    if (user_id) { params.push(user_id); conds.push(`user_id = $${params.length}`); }
+    if (patient_id) { params.push(patient_id); conds.push(`patient_id = $${params.length}`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const { rows } = await pool.query(`
+      SELECT id, user_id, patient_id, name, doc_type, mime, size_kb, valid_until, created_at
+      FROM documents ${where} ORDER BY created_at DESC LIMIT 200
+    `, params);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/documents/:id/download', auth, adminOnly, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM documents WHERE id=$1', [req.params.id]);
+    const d = rows[0];
+    if (!d) return res.status(404).json({ error: 'Nicht gefunden' });
+    await audit(req, 'document_download', 'document', d.id);
+    const b64 = (d.data || '').split(',')[1] || '';
+    res.setHeader('Content-Type', d.mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(d.name)}"`);
+    res.send(Buffer.from(b64, 'base64'));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/documents/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const { rows } = await pool.query('DELETE FROM documents WHERE id=$1 RETURNING id, name', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    await audit(req, 'document_deleted', 'document', req.params.id);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1812,15 +1931,33 @@ app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
 });
 
 app.post('/api/admin/users', auth, adminOnly, async (req, res) => {
-  const { name, email, password, role, phone, hourly_rate } = req.body;
+  const { name, email, password, role, phone, hourly_rate,
+          address, iban, tax_id, qualifications, shift_start, max_hours_per_day,
+          birth_date, hired_at, employment_type, hr_notes } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, E-Mail, Passwort erforderlich' });
+  if (String(password).length < 8) return res.status(400).json({ error: 'Passwort: mindestens 8 Zeichen' });
   try {
-    const hashed = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 12);
     const { rows } = await pool.query(
-      `INSERT INTO users (id, name, email, password, role, phone, hourly_rate) VALUES ($1,$2,$3,$4,$5,$6,$7)
-       RETURNING id, name, email, role, phone, hourly_rate`,
-      [gid('u'), name, email.toLowerCase(), hashed, role || 'angehoeriger', phone || '', num(hourly_rate)]
+      `INSERT INTO users (id, name, email, password, role, phone, hourly_rate,
+         address, iban, tax_id, qualifications, shift_start, max_hours_per_day,
+         birth_date, hired_at, employment_type, hr_notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       RETURNING id, name, email, role, phone, hourly_rate, address, shift_start, max_hours_per_day,
+                 birth_date, hired_at, employment_type`,
+      [gid('u'), name, email.toLowerCase(), hashed, role || 'angehoeriger', phone || '', num(hourly_rate),
+       address || '', iban ? encryptField(iban) : '', tax_id ? encryptField(tax_id) : '',
+       JSON.stringify(qualifications || []), shift_start || '08:00', parseInt(max_hours_per_day) || 8,
+       birth_date || null, hired_at || null, employment_type || '', hr_notes || '']
     );
+    await audit(req, 'user_created', 'user', rows[0].id);
+    // Heimatadresse für Routenplanung asynchron geocodieren
+    if ((role === 'betreuer') && address) {
+      setImmediate(async () => {
+        const c = await geocodeAddress(address);
+        if (c) await pool.query('UPDATE users SET home_lat=$1, home_lng=$2 WHERE id=$3', [c.lat, c.lng, rows[0].id]).catch(() => {});
+      });
+    }
     res.json(rows[0]);
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'E-Mail bereits registriert' });

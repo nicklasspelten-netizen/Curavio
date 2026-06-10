@@ -235,10 +235,13 @@ a.plink:hover{text-decoration:underline}
     <!-- ── BETREUER ── -->
     <div class="page" id="pg-betreuer">
       <h2>Betreuer</h2>
-      <div class="psub">Auslastung, Stundensätze, Abrechnung</div>
+      <div class="psub">Personalverwaltung: Stammdaten, Dokumente, Auslastung, Abrechnung</div>
       <div class="card">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn-a" onclick="document.getElementById('modal-betreuer-neu').classList.add('on')">+ Neuer Betreuer</button>
+        </div>
         <table>
-          <thead><tr><th>Name</th><th>Kontakt</th><th>Stundensatz</th><th>Std. diese Woche</th><th>Auslastung</th><th>Offene Besuche</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Kontakt</th><th>Stundensatz</th><th>Std. diese Woche</th><th>Auslastung</th><th>Offene Besuche</th><th>Status / Dokumente</th><th></th></tr></thead>
           <tbody id="betreuer-tbody"></tbody>
         </table>
       </div>
@@ -256,6 +259,9 @@ a.plink:hover{text-decoration:underline}
       <h2>Klienten</h2>
       <div class="psub">Pflegegrade, Versicherung, Freibeträge &amp; Restbudgets</div>
       <div class="card">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn-a" onclick="openKlientModal()">+ Neuer Klient</button>
+        </div>
         <table>
           <thead><tr><th>Name</th><th>Adresse</th><th>Pflegegrad</th><th>Versicherung</th><th>Betreuer</th><th></th></tr></thead>
           <tbody id="klienten-tbody"></tbody>
@@ -490,8 +496,8 @@ a.plink:hover{text-decoration:underline}
 
 <!-- ── Modal: Betreuer bearbeiten ── -->
 <div class="modal" id="modal-betreuer">
-  <div class="modal-box">
-    <h3>Betreuer bearbeiten</h3>
+  <div class="modal-box" style="max-width:680px">
+    <h3>Personalakte</h3>
     <input type="hidden" id="mb-id">
     <div class="fi"><label>Name</label><input id="mb-name"></div>
     <div class="frow">
@@ -508,12 +514,39 @@ a.plink:hover{text-decoration:underline}
     </div>
     <div class="frow" style="margin-top:14px">
       <div class="fi" style="flex:0 0 140px"><label>Schichtstart</label><input type="time" id="mb-shift" value="08:00"></div>
-      <div class="fi" style="flex:0 0 160px"><label>Max. Std./Tag</label><input type="number" id="mb-maxh" value="8"></div>
+      <div class="fi" style="flex:0 0 140px"><label>Max. Std./Tag</label><input type="number" id="mb-maxh" value="8"></div>
+      <div class="fi" style="flex:0 0 150px"><label>Geburtsdatum</label><input type="date" id="mb-birth"></div>
+      <div class="fi" style="flex:0 0 150px"><label>Eintrittsdatum</label><input type="date" id="mb-hired"></div>
     </div>
+    <div class="frow" style="margin-top:14px">
+      <div class="fi"><label>Beschäftigungsart</label>
+        <select id="mb-emptype"><option value="">–</option><option value="festanstellung">Festanstellung</option><option value="teilzeit">Teilzeit</option><option value="minijob">Minijob</option><option value="freiberuflich">Freiberuflich</option></select>
+      </div>
+    </div>
+    <div class="fi" style="margin-top:14px"><label>Interne HR-Notizen</label><textarea id="mb-hrnotes" rows="2"></textarea></div>
     <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-top:14px"><input type="checkbox" id="mb-active" checked> Aktiv</label>
+
+    <h3 style="margin-top:20px;font-size:17px">📁 Dokumente &amp; Zeugnisse</h3>
+    <div id="mb-docs" class="muted" style="margin-bottom:10px">–</div>
+    <div class="frow">
+      <div class="fi" style="flex:2"><label>Datei (PDF/Bild, max. 5 MB)</label><input type="file" id="mb-file" accept=".pdf,.jpg,.jpeg,.png" style="padding:7px;border:1.5px solid var(--border);border-radius:var(--r-md);background:var(--cream);font-size:12px"></div>
+      <div class="fi"><label>Typ</label>
+        <select id="mb-doctype">
+          <option value="zeugnis">Zeugnis</option>
+          <option value="fuehrungszeugnis">Führungszeugnis</option>
+          <option value="erste_hilfe">Erste-Hilfe-Nachweis</option>
+          <option value="qualifikation">Qualifikationsnachweis</option>
+          <option value="vertrag">Arbeitsvertrag</option>
+          <option value="sonstiges">Sonstiges</option>
+        </select>
+      </div>
+      <div class="fi" style="flex:0 0 150px"><label>Gültig bis (optional)</label><input type="date" id="mb-docvalid"></div>
+      <button class="btn btn-f btn-sm" onclick="uploadDoc()">⬆ Hochladen</button>
+    </div>
+
     <div style="display:flex;gap:10px;margin-top:18px">
       <button class="btn btn-f" style="flex:1" onclick="saveBetreuer()">Speichern ✓</button>
-      <button class="btn btn-g" onclick="closeModal('modal-betreuer')">Abbrechen</button>
+      <button class="btn btn-g" onclick="closeModal('modal-betreuer')">Schließen</button>
     </div>
   </div>
 </div>
@@ -538,6 +571,93 @@ a.plink:hover{text-decoration:underline}
       <button class="btn btn-f" style="flex:1" onclick="savePayment()">Buchen ✓</button>
       <button class="btn btn-g" onclick="closeModal('modal-payment')">Abbrechen</button>
     </div>
+  </div>
+</div>
+
+<!-- ── Modal: Neuer Klient (Aufnahmebogen) ── -->
+<div class="modal" id="modal-klient">
+  <div class="modal-box" style="max-width:680px">
+    <h3>Neuen Klienten aufnehmen</h3>
+    <div class="muted" style="margin-bottom:14px">⚕️ Hinweis: Es werden Gesundheitsdaten nach Art. 9 DSGVO verarbeitet (Zweck: Organisation &amp; Abrechnung der Betreuung).</div>
+    <div class="frow">
+      <div class="fi" style="flex:2"><label>Name *</label><input id="nk-name" placeholder="Vor- und Nachname"></div>
+      <div class="fi" style="flex:0 0 150px"><label>Geburtsdatum</label><input type="date" id="nk-birth"></div>
+      <div class="fi" style="flex:0 0 120px"><label>Pflegegrad</label>
+        <select id="nk-pg"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+      </div>
+    </div>
+    <div class="frow" style="margin-top:12px">
+      <div class="fi" style="flex:2"><label>Adresse (für Routenplanung)</label><input id="nk-address" placeholder="Straße Nr., PLZ Ort"></div>
+      <div class="fi"><label>Telefon</label><input id="nk-phone"></div>
+    </div>
+    <div class="frow" style="margin-top:12px">
+      <div class="fi"><label>Pflegekasse / Versicherung</label><input id="nk-insurance" placeholder="z.B. AOK Bayern"></div>
+      <div class="fi"><label>Versichertennummer</label><input id="nk-insnr"></div>
+    </div>
+    <div class="frow" style="margin-top:12px">
+      <div class="fi" style="flex:2"><label>Notfallkontakt</label><input id="nk-emergency" placeholder="Name + Telefon"></div>
+      <div class="fi" style="flex:0 0 110px"><label>Wunschzeit von</label><input type="time" id="nk-tfrom"></div>
+      <div class="fi" style="flex:0 0 110px"><label>bis</label><input type="time" id="nk-tto"></div>
+    </div>
+    <div class="frow" style="margin-top:12px">
+      <div class="fi"><label>Stamm-Betreuer (optional)</label><select id="nk-betreuer"><option value="">– später / KI-Disposition –</option></select></div>
+    </div>
+    <div class="fi" style="margin-top:12px"><label>Besonderheiten / Hinweise für Betreuer</label><textarea id="nk-notes" rows="2" placeholder="z.B. Demenz, Hund im Haus, Schlüssel beim Nachbarn …"></textarea></div>
+    <div style="background:var(--forest-lt);border-radius:var(--r-md);padding:14px;margin-top:14px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:10px">👤 Angehörigen-Konto für die App anlegen (optional)</div>
+      <div class="frow">
+        <div class="fi"><label>Name Angehörige(r)</label><input id="nk-ang-name"></div>
+        <div class="fi"><label>E-Mail</label><input id="nk-ang-email" type="email"></div>
+        <div class="fi"><label>Passwort (min. 8)</label><input id="nk-ang-pw" type="password"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-f" style="flex:1" onclick="createKlient()">Klient anlegen ✓</button>
+      <button class="btn btn-g" onclick="closeModal('modal-klient')">Abbrechen</button>
+    </div>
+    <div class="muted" style="margin-top:10px">Beim Anlegen werden automatisch: Freibetrag-Budgets nach Pflegegrad erstellt, die Adresse für die Routenplanung geocodiert und Telefon/Versichertennummer verschlüsselt gespeichert.</div>
+  </div>
+</div>
+
+<!-- ── Modal: Neuer Betreuer (Personalakte anlegen) ── -->
+<div class="modal" id="modal-betreuer-neu">
+  <div class="modal-box" style="max-width:680px">
+    <h3>Neuen Betreuer einstellen</h3>
+    <div style="font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Stammdaten</div>
+    <div class="frow">
+      <div class="fi" style="flex:2"><label>Name *</label><input id="nb-name"></div>
+      <div class="fi" style="flex:0 0 150px"><label>Geburtsdatum</label><input type="date" id="nb-birth"></div>
+    </div>
+    <div class="frow" style="margin-top:12px">
+      <div class="fi"><label>E-Mail (Login) *</label><input id="nb-email" type="email"></div>
+      <div class="fi"><label>Start-Passwort (min. 8) *</label><input id="nb-pw" type="password"></div>
+      <div class="fi" style="flex:0 0 150px"><label>Telefon</label><input id="nb-phone"></div>
+    </div>
+    <div class="fi" style="margin-top:12px"><label>Heimatadresse (für Routenplanung)</label><input id="nb-address" placeholder="Straße Nr., PLZ Ort"></div>
+    <div style="font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px">Beschäftigung</div>
+    <div class="frow">
+      <div class="fi" style="flex:0 0 150px"><label>Eintrittsdatum</label><input type="date" id="nb-hired"></div>
+      <div class="fi"><label>Beschäftigungsart</label>
+        <select id="nb-emptype"><option value="festanstellung">Festanstellung</option><option value="teilzeit">Teilzeit</option><option value="minijob">Minijob</option><option value="freiberuflich">Freiberuflich</option></select>
+      </div>
+      <div class="fi" style="flex:0 0 130px"><label>Stundensatz €</label><input type="number" step="0.01" id="nb-rate" value="25"></div>
+    </div>
+    <div class="frow" style="margin-top:12px">
+      <div class="fi" style="flex:0 0 130px"><label>Schichtstart</label><input type="time" id="nb-shift" value="08:00"></div>
+      <div class="fi" style="flex:0 0 140px"><label>Max. Std./Tag</label><input type="number" id="nb-maxh" value="8"></div>
+      <div class="fi"><label>Qualifikationen (Komma-getrennt)</label><input id="nb-quali" placeholder="Betreuungskraft §43b, Erste Hilfe, Führerschein B"></div>
+    </div>
+    <div style="font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px">Finanzen <span style="text-transform:none;font-weight:400">(verschlüsselt gespeichert)</span></div>
+    <div class="frow">
+      <div class="fi"><label>IBAN</label><input id="nb-iban" placeholder="DE.."></div>
+      <div class="fi" style="flex:0 0 180px"><label>Steuer-ID</label><input id="nb-taxid"></div>
+    </div>
+    <div class="fi" style="margin-top:12px"><label>Interne HR-Notizen</label><textarea id="nb-hrnotes" rows="2"></textarea></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-f" style="flex:1" onclick="createBetreuer()">Betreuer anlegen ✓</button>
+      <button class="btn btn-g" onclick="closeModal('modal-betreuer-neu')">Abbrechen</button>
+    </div>
+    <div class="muted" style="margin-top:10px">Zeugnisse, Führungszeugnis &amp; Nachweise lädst du direkt danach über „Personalakte“ in der Betreuer-Liste hoch.</div>
   </div>
 </div>
 
@@ -652,6 +772,9 @@ async function loadBase() {
     CACHE.betreuer.filter(b => b.active !== false).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
   // Routenplanung: Betreuer-Selector
   document.getElementById('rt-betreuer').innerHTML = CACHE.betreuer.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  // Klienten-Aufnahme: Betreuer-Auswahl
+  document.getElementById('nk-betreuer').innerHTML = '<option value="">– später / KI-Disposition –</option>' +
+    CACHE.betreuer.filter(b => b.active !== false).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
 }
 
 function fillGenRecipients() {
@@ -865,9 +988,15 @@ async function loadBetreuerList() {
       <td>${String(b.stunden_woche || 0).replace('.', ',')} h</td>
       <td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:${b.auslastung}%"></i></div><span style="font-size:12px;font-weight:700">${b.auslastung}%</span></div></td>
       <td>${b.offene_besuche || 0}</td>
-      <td>${b.active === false ? '<span class="chip chip-m">Inaktiv</span>' : '<span class="chip chip-g">Aktiv</span>'}</td>
+      <td>
+        ${b.active === false ? '<span class="chip chip-m">Inaktiv</span>' : '<span class="chip chip-g">Aktiv</span>'}
+        ${parseInt(b.docs_abgelaufen) > 0 ? `<span class="chip chip-r">📄 ${b.docs_abgelaufen} abgelaufen!</span>`
+          : parseInt(b.docs_bald_ablaufend) > 0 ? `<span class="chip chip-a">📄 läuft bald ab</span>`
+          : parseInt(b.docs_anzahl) > 0 ? `<span class="chip chip-m">📄 ${b.docs_anzahl}</span>`
+          : '<span class="chip chip-a">📄 keine Dokumente</span>'}
+      </td>
       <td style="white-space:nowrap">
-        <button class="btn btn-g btn-sm" onclick="editBetreuer('${b.id}')">Bearbeiten</button>
+        <button class="btn btn-g btn-sm" onclick="editBetreuer('${b.id}')">Personalakte</button>
         <button class="btn btn-g btn-sm" onclick="showBetreuerAbrechnung('${b.id}', '${esc(b.name)}')">Abrechnung</button>
       </td>
     </tr>`).join('') || '<tr><td colspan="8" class="muted">Keine Betreuer angelegt.</td></tr>';
@@ -886,8 +1015,13 @@ function editBetreuer(id) {
   document.getElementById('mb-address').value = b.address || '';
   document.getElementById('mb-shift').value = (b.shift_start || '08:00').substring(0, 5);
   document.getElementById('mb-maxh').value = b.max_hours_per_day || 8;
+  document.getElementById('mb-birth').value = b.birth_date ? String(b.birth_date).substring(0, 10) : '';
+  document.getElementById('mb-hired').value = b.hired_at ? String(b.hired_at).substring(0, 10) : '';
+  document.getElementById('mb-emptype').value = b.employment_type || '';
+  document.getElementById('mb-hrnotes').value = b.hr_notes || '';
   document.getElementById('mb-active').checked = b.active !== false;
   document.getElementById('modal-betreuer').classList.add('on');
+  loadDocs(b.id);
 }
 
 async function saveBetreuer() {
@@ -904,6 +1038,10 @@ async function saveBetreuer() {
       address: document.getElementById('mb-address').value,
       shift_start: document.getElementById('mb-shift').value,
       max_hours_per_day: parseInt(document.getElementById('mb-maxh').value) || 8,
+      birth_date: document.getElementById('mb-birth').value || null,
+      hired_at: document.getElementById('mb-hired').value || null,
+      employment_type: document.getElementById('mb-emptype').value,
+      hr_notes: document.getElementById('mb-hrnotes').value,
       active: document.getElementById('mb-active').checked
     }
   });
@@ -949,6 +1087,142 @@ async function genBetreuerGutschrift(bid, monat) {
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Gutschrift ' + res.invoice_number + ' erstellt');
   loadInvoices();
+}
+
+// ─── Personalakte: Dokumente (Zeugnisse & Co.) ───────────────────────────────
+const DOC_LABELS = { zeugnis: 'Zeugnis', fuehrungszeugnis: 'Führungszeugnis', erste_hilfe: 'Erste Hilfe',
+                     qualifikation: 'Qualifikation', vertrag: 'Vertrag', sonstiges: 'Sonstiges' };
+
+async function loadDocs(betreuerId) {
+  const el = document.getElementById('mb-docs');
+  el.innerHTML = 'Lade …';
+  const docs = await api('/admin/documents?user_id=' + betreuerId);
+  if (!Array.isArray(docs) || !docs.length) { el.innerHTML = '<span class="muted">Noch keine Dokumente hinterlegt.</span>'; return; }
+  const today = new Date(); const soon = new Date(); soon.setDate(soon.getDate() + 30);
+  el.innerHTML = docs.map(d => {
+    const vu = d.valid_until ? new Date(d.valid_until) : null;
+    const expired = vu && vu < today;
+    const expSoon = vu && !expired && vu < soon;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="flex:1"><b>${esc(d.name)}</b> <span class="chip chip-m">${DOC_LABELS[d.doc_type] || esc(d.doc_type)}</span></span>
+      <span class="muted">${d.size_kb} KB</span>
+      ${vu ? `<span class="chip ${expired ? 'chip-r' : expSoon ? 'chip-a' : 'chip-g'}">${expired ? '⚠ abgelaufen ' : 'gültig bis '}${deD(d.valid_until)}</span>` : ''}
+      <a class="plink" href="${API}/admin/documents/${d.id}/download?token=${encodeURIComponent(TOKEN)}" target="_blank">Öffnen</a>
+      <a class="plink" style="color:var(--danger)" href="#" onclick="deleteDoc('${d.id}');return false">Löschen</a>
+    </div>`;
+  }).join('');
+}
+
+function uploadDoc() {
+  const id = document.getElementById('mb-id').value;
+  const file = document.getElementById('mb-file').files[0];
+  if (!id || !file) { toast('Bitte Datei wählen'); return; }
+  if (file.size > 5 * 1024 * 1024) { toast('Datei zu groß (max. 5 MB)'); return; }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const res = await api('/admin/documents', {
+      method: 'POST',
+      body: {
+        user_id: id, name: file.name,
+        doc_type: document.getElementById('mb-doctype').value,
+        valid_until: document.getElementById('mb-docvalid').value || null,
+        data: reader.result
+      }
+    });
+    if (res.error) { toast('Fehler: ' + res.error); return; }
+    toast('✅ Dokument hochgeladen');
+    document.getElementById('mb-file').value = '';
+    document.getElementById('mb-docvalid').value = '';
+    loadDocs(id); loadBetreuerList();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function deleteDoc(docId) {
+  if (!confirm('Dokument wirklich löschen?')) return;
+  const res = await api('/admin/documents/' + docId, { method: 'DELETE' });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('Dokument gelöscht');
+  loadDocs(document.getElementById('mb-id').value); loadBetreuerList();
+}
+
+// ─── Neuer Betreuer (Personalakte anlegen) ───────────────────────────────────
+async function createBetreuer() {
+  const name = document.getElementById('nb-name').value.trim();
+  const email = document.getElementById('nb-email').value.trim();
+  const pw = document.getElementById('nb-pw').value;
+  if (!name || !email || !pw) { toast('Name, E-Mail und Passwort sind Pflichtfelder'); return; }
+  if (pw.length < 8) { toast('Passwort: mindestens 8 Zeichen'); return; }
+  const res = await api('/admin/users', {
+    method: 'POST',
+    body: {
+      name, email, password: pw, role: 'betreuer',
+      phone: document.getElementById('nb-phone').value,
+      birth_date: document.getElementById('nb-birth').value || null,
+      address: document.getElementById('nb-address').value,
+      hired_at: document.getElementById('nb-hired').value || null,
+      employment_type: document.getElementById('nb-emptype').value,
+      hourly_rate: parseFloat(document.getElementById('nb-rate').value) || 0,
+      shift_start: document.getElementById('nb-shift').value,
+      max_hours_per_day: parseInt(document.getElementById('nb-maxh').value) || 8,
+      qualifications: document.getElementById('nb-quali').value.split(',').map(s => s.trim()).filter(Boolean),
+      iban: document.getElementById('nb-iban').value,
+      tax_id: document.getElementById('nb-taxid').value,
+      hr_notes: document.getElementById('nb-hrnotes').value
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Betreuer angelegt – Dokumente jetzt über „Personalakte“ hochladen');
+  closeModal('modal-betreuer-neu');
+  ['nb-name','nb-email','nb-pw','nb-phone','nb-birth','nb-address','nb-hired','nb-quali','nb-iban','nb-taxid','nb-hrnotes'].forEach(i => document.getElementById(i).value = '');
+  await loadBetreuerList(); loadBase(); loadUsersList();
+}
+
+// ─── Neuer Klient (Aufnahmebogen) ────────────────────────────────────────────
+function openKlientModal() {
+  document.getElementById('modal-klient').classList.add('on');
+}
+
+async function createKlient() {
+  const name = document.getElementById('nk-name').value.trim();
+  if (!name) { toast('Name ist Pflichtfeld'); return; }
+
+  // Optional: Angehörigen-Konto zuerst anlegen
+  let angIds = [];
+  const angName = document.getElementById('nk-ang-name').value.trim();
+  const angEmail = document.getElementById('nk-ang-email').value.trim();
+  const angPw = document.getElementById('nk-ang-pw').value;
+  if (angEmail || angName || angPw) {
+    if (!angName || !angEmail || !angPw) { toast('Angehörigen-Konto: Name, E-Mail und Passwort komplett ausfüllen (oder alle leer lassen)'); return; }
+    if (angPw.length < 8) { toast('Angehörigen-Passwort: mindestens 8 Zeichen'); return; }
+    const u = await api('/admin/users', { method: 'POST', body: { name: angName, email: angEmail, password: angPw, role: 'angehoeriger' } });
+    if (u.error) { toast('Angehörigen-Konto: ' + u.error); return; }
+    angIds = [u.id];
+  }
+
+  const res = await api('/patients', {
+    method: 'POST',
+    body: {
+      name,
+      birth_date: document.getElementById('nk-birth').value || null,
+      pflegegrad: parseInt(document.getElementById('nk-pg').value) || 1,
+      address: document.getElementById('nk-address').value,
+      phone: document.getElementById('nk-phone').value,
+      insurance: document.getElementById('nk-insurance').value,
+      insurance_number: document.getElementById('nk-insnr').value,
+      emergency_contact: document.getElementById('nk-emergency').value,
+      preferred_time_from: document.getElementById('nk-tfrom').value || null,
+      preferred_time_to: document.getElementById('nk-tto').value || null,
+      betreuer_id: document.getElementById('nk-betreuer').value || null,
+      notes: document.getElementById('nk-notes').value,
+      angehoerige_ids: angIds
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Klient angelegt – Freibeträge erstellt, Adresse wird geocodiert' + (angIds.length ? ', App-Zugang aktiv' : ''));
+  closeModal('modal-klient');
+  ['nk-name','nk-birth','nk-address','nk-phone','nk-insurance','nk-insnr','nk-emergency','nk-tfrom','nk-tto','nk-notes','nk-ang-name','nk-ang-email','nk-ang-pw'].forEach(i => document.getElementById(i).value = '');
+  await loadKlienten(); loadBase(); loadUsersList();
 }
 
 // ─── Klienten / Freibeträge ──────────────────────────────────────────────────
