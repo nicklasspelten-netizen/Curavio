@@ -2389,8 +2389,18 @@ async function saveMyPatient(pid) {
 </script>
 <script>
 if ('serviceWorker' in navigator) {
+  // Wenn eine neue App-Version den Service Worker übernimmt: genau einmal neu laden,
+  // damit das aktuelle index.html/JS sofort aktiv ist (Schutz gegen Reload-Schleife).
+  let swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swReloaded) return;
+    swReloaded = true;
+    location.reload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      reg.update().catch(() => {});
+    }).catch(() => {});
   });
 }
 </script>
