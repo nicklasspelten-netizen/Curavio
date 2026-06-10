@@ -911,22 +911,24 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
 <script>
 // ─── Config ───────────────────────────────────────────────────────────────────
 const API = window.location.origin + '/api';
-let TOKEN = localStorage.getItem('curavio_token') || null;
-let USER  = JSON.parse(localStorage.getItem('curavio_user') || 'null');
+// Sitzung NUR im Arbeitsspeicher – kein automatisches Anmelden, immer erst Login.
+let TOKEN = null;
+let USER  = null;
 let ws    = null;
+// Alt-Sitzungen aus früheren Versionen entfernen (DSGVO: keine persistente Sitzung)
+try { localStorage.removeItem('curavio_token'); localStorage.removeItem('curavio_user'); } catch {}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// Keine automatische Anmeldung: Es wird immer zuerst der Login-Bildschirm gezeigt.
 window.addEventListener('load', () => {
   initBookDates();
-  setTimeout(async () => {
+  setTimeout(() => {
     document.getElementById('loading').classList.add('hide');
-    if (TOKEN && USER) {
-      // DSGVO: Einwilligungsstatus prüfen, bevor die App startet
-      const me = await api('/auth/me').catch(() => null);
-      if (me && !me.error && me.consent_accepted !== true) { showConsentModal(false); return; }
-      if (me && me.error) { doLogout(); return; } // Token abgelaufen (8h)
-      startApp();
-    }
+    // Sicherstellen, dass ausschließlich der Login-Screen aktiv ist
+    document.getElementById('bnav').style.display = 'none';
+    document.getElementById('bnav-b').style.display = 'none';
+    document.querySelectorAll('.sc').forEach(s => s.classList.remove('active'));
+    document.getElementById('sc-login').classList.add('active');
   }, 1200);
 });
 
@@ -1013,9 +1015,8 @@ async function doLogin() {
   const data = await api('/auth/login', { method:'POST', body: { email, password: pw } });
   if (data.error) { err.textContent = data.error; err.style.display = 'block'; return; }
 
+  // Sitzung nur im Arbeitsspeicher – wird beim Schließen/Neuladen verworfen
   TOKEN = data.token; USER = data.user;
-  localStorage.setItem('curavio_token', TOKEN);
-  localStorage.setItem('curavio_user', JSON.stringify(USER));
 
   // DSGVO: ohne gültige Einwilligung kein Zugriff auf die App
   if (data.consent_required) { showConsentModal(false); return; }
@@ -2354,7 +2355,6 @@ async function saveMyProfile() {
   });
   if (res.error) { toast('Fehler: ' + res.error); return; }
   USER = { ...USER, name: res.name };
-  localStorage.setItem('curavio_user', JSON.stringify(USER));
   toast('✅ Profil gespeichert');
 }
 

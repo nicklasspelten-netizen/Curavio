@@ -677,8 +677,10 @@ a.plink:hover{text-decoration:underline}
 <script>
 // ─── Basis ───────────────────────────────────────────────────────────────────
 const API = window.location.origin + '/api';
-let TOKEN = localStorage.getItem('curavio_admin_token') || null;
-let USER  = JSON.parse(localStorage.getItem('curavio_admin_user') || 'null');
+// Sitzung nur im Arbeitsspeicher – immer erst anmelden, kein automatisches Wieder-Einloggen
+let TOKEN = null;
+let USER  = null;
+try { localStorage.removeItem('curavio_admin_token'); localStorage.removeItem('curavio_admin_user'); } catch {}
 let ws = null;
 let CACHE = { patients: [], betreuer: [], invoices: [] };
 
@@ -709,9 +711,7 @@ async function doLogin() {
   }).then(r => r.json()).catch(() => ({ error: 'Server nicht erreichbar' }));
   if (data.error) { err.textContent = data.error; err.style.display = 'block'; return; }
   if (data.user.role !== 'admin') { err.textContent = 'Kein Admin-Konto. Zugriff verweigert.'; err.style.display = 'block'; return; }
-  TOKEN = data.token; USER = data.user;
-  localStorage.setItem('curavio_admin_token', TOKEN);
-  localStorage.setItem('curavio_admin_user', JSON.stringify(USER));
+  TOKEN = data.token; USER = data.user; // nur im Arbeitsspeicher, keine persistente Sitzung
   // DSGVO: Einwilligung beim ersten Login
   if (data.consent_required) {
     if (!confirm('Datenschutzerklärung & Nutzungsbedingungen (Version ' + (data.consent_version || '2026-06') + ') akzeptieren?\n\nVerarbeitung von Gesundheitsdaten nach Art. 9 DSGVO zum Zweck der Pflegeorganisation. Volltext in der Klienten-App unter "Datenschutzerklärung". Ohne Einwilligung ist keine Nutzung möglich.')) {
@@ -1819,7 +1819,7 @@ async function saveSettings() {
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
-if (TOKEN && USER && USER.role === 'admin') showApp();
+// Kein automatisches Anmelden: Es wird immer zuerst der Login angezeigt.
 </script>
 </body>
 </html>
