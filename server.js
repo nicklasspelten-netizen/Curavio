@@ -246,6 +246,7 @@ async function initDB() {
         notes TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT NOW()
       );
+      ALTER TABLE leistungsnachweise ADD COLUMN IF NOT EXISTS leistungsart VARCHAR(20) DEFAULT '45b';
 
       -- ===== Neue Tabellen: Buchhaltung =====
       CREATE TABLE IF NOT EXISTS invoices (
@@ -345,6 +346,8 @@ async function initDB() {
       firma_iban: 'DE12 3456 7890 1234 5678 90',
       firma_bank: 'Musterbank Berlin',
       firma_steuernummer: '12/345/67890',
+      firma_ik_nummer: '',
+      firma_anerkennung: '',
       default_hourly_rate: '25.00',
       mwst_satz: '0',
       mwst_hinweis: 'Umsatzsteuerfrei gemäß §4 Nr.16 UStG (soziale Dienstleistung)',
@@ -1957,7 +1960,7 @@ const parseLn = (ln) => ({
   signature_betreuer: ln.signature_betreuer ? true : null
 });
 
-async function generateLn(patientId, periodFrom, periodTo, createdByReq) {
+async function generateLn(patientId, periodFrom, periodTo, createdByReq, leistungsart) {
   const pat = (await pool.query('SELECT * FROM patients WHERE id=$1', [patientId])).rows[0];
   if (!pat) throw new Error('Patient nicht gefunden');
   const { rows: visits } = await pool.query(`
@@ -1970,8 +1973,11 @@ async function generateLn(patientId, periodFrom, periodTo, createdByReq) {
   `, [patientId, periodFrom, periodTo]);
   if (!visits.length) return null;
 
+  const deTime = (d) => d ? new Date(d).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
   const leistungen = visits.map(v => ({
     datum: v.actual_end.toISOString().split('T')[0],
+    von: deTime(v.actual_start),
+    bis: deTime(v.actual_end),
     leistung: v.service || (() => { try { return JSON.parse(v.services || '[]')[0]; } catch { return ''; } })() || 'Alltagsbegleitung',
     stunden: num(v.stunden),
     betreuer: v.betreuer_name || '',
@@ -1986,19 +1992,20 @@ async function generateLn(patientId, periodFrom, periodTo, createdByReq) {
 
   const id = gid('ln');
   const lnNum = await nextLnNumber();
+  const art = ['45b', '39', 'selbstzahler'].includes(leistungsart) ? leistungsart : '45b';
   const { rows } = await pool.query(`
-    INSERT INTO leistungsnachweise (id, ln_number, patient_id, betreuer_id, period_from, period_to, leistungen, krankenkasse, status)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ausstehend') RETURNING *
-  `, [id, lnNum, patientId, mainBetreuer, periodFrom, periodTo, JSON.stringify(leistungen), pat.insurance || '']);
+    INSERT INTO leistungsnachweise (id, ln_number, patient_id, betreuer_id, period_from, period_to, leistungen, krankenkasse, status, leistungsart)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ausstehend',$9) RETURNING *
+  `, [id, lnNum, patientId, mainBetreuer, periodFrom, periodTo, JSON.stringify(leistungen), pat.insurance || '', art]);
   if (createdByReq) await audit(createdByReq, 'leistungsnachweis_created', 'leistungsnachweis', id);
   return rows[0];
 }
 
 app.post('/api/admin/leistungsnachweise/generate', auth, adminOnly, async (req, res) => {
-  const { patient_id, period_from, period_to } = req.body;
+  const { patient_id, period_from, period_to, leistungsart } = req.body;
   if (!patient_id || !period_from || !period_to) return res.status(400).json({ error: 'patient_id, period_from, period_to erforderlich' });
   try {
-    const ln = await generateLn(patient_id, period_from, period_to, req);
+    const ln = await generateLn(patient_id, period_from, period_to, req, leistungsart);
     if (!ln) return res.status(400).json({ error: 'Keine abgeschlossenen Besuche im Zeitraum' });
     wsBroadcast({ type: 'nachweis_created', id: ln.id });
     res.json(parseLn(ln));
@@ -2007,7 +2014,7 @@ app.post('/api/admin/leistungsnachweise/generate', auth, adminOnly, async (req, 
 
 // Bulk: alle Klienten für einen Monat
 app.post('/api/admin/leistungsnachweise/bulk-generate', auth, adminOnly, async (req, res) => {
-  const { monat } = req.body; // YYYY-MM
+  const { monat, leistungsart } = req.body; // YYYY-MM
   if (!monat) return res.status(400).json({ error: 'monat (YYYY-MM) erforderlich' });
   try {
     const from = monat + '-01';
@@ -2020,7 +2027,7 @@ app.post('/api/admin/leistungsnachweise/bulk-generate', auth, adminOnly, async (
       const exists = (await pool.query(
         'SELECT 1 FROM leistungsnachweise WHERE patient_id=$1 AND period_from=$2::date AND period_to=$3::date', [p.id, from, to])).rows[0];
       if (exists) { skipped.push(p.name + ' (existiert)'); continue; }
-      const ln = await generateLn(p.id, from, to, req);
+      const ln = await generateLn(p.id, from, to, req, leistungsart);
       if (ln) created.push(ln.ln_number + ' – ' + p.name);
       else skipped.push(p.name + ' (keine Besuche)');
     }
@@ -2145,84 +2152,181 @@ app.get('/api/leistungsnachweise/:id/pdf', auth, async (req, res) => {
     const settings = await getSettings();
     const leistungen = JSON.parse(ln.leistungen || '[]');
 
+    // Verknüpfte Rechnung (für Vergütungs-Hinweis)
+    let invNum = null;
+    if (ln.invoice_id) {
+      const inv = (await pool.query('SELECT invoice_number FROM invoices WHERE id=$1', [ln.invoice_id])).rows[0];
+      invNum = inv?.invoice_number || null;
+    }
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${ln.ln_number || ln.id}.pdf"`);
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
     doc.pipe(res);
 
-    // Kopf
-    doc.fillColor('#1C3A2A').fontSize(20).font('Helvetica-Bold').text('LEISTUNGSNACHWEIS', 50, 50);
-    doc.fontSize(9).font('Helvetica').fillColor('#666')
-       .text(settings.firma_name + ' · ' + settings.firma_adresse, 50, 75);
-    doc.fontSize(10).fillColor('#333')
-       .text('Zeitraum: ' + deDate(ln.period_from) + ' – ' + deDate(ln.period_to), 360, 52, { width: 185, align: 'right' })
-       .text('LN-Nummer: ' + (ln.ln_number || ln.id), 360, 66, { width: 185, align: 'right' });
-    doc.moveTo(50, 95).lineTo(545, 95).strokeColor('#C47B3A').lineWidth(1.5).stroke();
+    // ═══ Kassenkonforme Vorlage (Aufbau analog Pflegekassen-Vordruck §45b/§39 SGB XI) ═══
+    const M = 40, W = 515;
+    const from = new Date(ln.period_from), to = new Date(ln.period_to);
+    const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+    const monLabel = sameMonth
+      ? from.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+      : deDate(ln.period_from) + ' – ' + deDate(ln.period_to);
 
-    // Klient
-    let y = 112;
-    doc.fontSize(10).fillColor('#000').font('Helvetica');
-    doc.text(`Klient: ${ln.patient_name || ''}${ln.birth_date ? ', geb. ' + deDate(ln.birth_date) : ''}`, 50, y); y += 15;
-    doc.text(`Adresse: ${ln.patient_address || '–'}`, 50, y); y += 15;
-    doc.text(`Pflegegrad: ${ln.pflegegrad || '–'}`, 50, y); y += 15;
-    doc.text(`Krankenkasse: ${ln.insurance || ln.krankenkasse || '–'}${ln.insurance_number ? ', Nr. ' + decryptField(ln.insurance_number) : ''}`, 50, y); y += 24;
+    // Kopfzeile
+    doc.fillColor('#000').fontSize(15).font('Helvetica-Bold').text('LEISTUNGSNACHWEIS', M, 42);
+    doc.fontSize(8.5).font('Helvetica').fillColor('#333')
+       .text('über Betreuungs- und Entlastungsleistungen (ambulante Alltagsbegleitung)', M, 60);
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000')
+       .text('Nachweis-Nr.: ' + (ln.ln_number || ln.id), M + 330, 44, { width: 185, align: 'right' });
+    doc.font('Helvetica')
+       .text('Abrechnungsmonat: ' + monLabel, M + 330, 58, { width: 185, align: 'right' });
+    doc.moveTo(M, 78).lineTo(M + W, 78).lineWidth(1).strokeColor('#000').stroke();
 
-    // Tabelle
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#333');
-    doc.text('Datum', 50, y).text('Leistung', 130, y, { width: 220 }).text('Betreuer', 360, y, { width: 110 }).text('Std.', 480, y, { width: 65, align: 'right' });
-    y += 13;
-    doc.moveTo(50, y).lineTo(545, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 7;
-    doc.font('Helvetica').fillColor('#000');
-    let total = 0;
-    leistungen.forEach(l => {
-      if (y > 640) { doc.addPage(); y = 60; }
-      total += num(l.stunden);
-      doc.text(deDate(l.datum), 50, y).text(String(l.leistung || '').substring(0, 50), 130, y, { width: 220 })
-         .text(String(l.betreuer || ''), 360, y, { width: 110 })
-         .text(num(l.stunden).toFixed(1).replace('.', ','), 480, y, { width: 65, align: 'right' });
-      y += 15;
-    });
-    doc.moveTo(50, y).lineTo(545, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 8;
-    doc.font('Helvetica-Bold').text('Gesamt:', 360, y).text(total.toFixed(1).replace('.', ',') + ' Std.', 480, y, { width: 65, align: 'right' });
-    y += 30;
+    // Zwei Stammdaten-Boxen: Leistungserbringer | Versicherte Person
+    const boxY = 86, boxH = 100, colW = Math.floor(W / 2) - 6;
+    doc.rect(M, boxY, colW, boxH).lineWidth(0.7).strokeColor('#888').stroke();
+    doc.rect(M + colW + 12, boxY, colW, boxH).stroke();
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#666')
+       .text('LEISTUNGSERBRINGER', M + 8, boxY + 6)
+       .text('VERSICHERTE PERSON', M + colW + 20, boxY + 6);
 
-    // Unterschriften
-    if (y > 560) { doc.addPage(); y = 60; }
-    doc.font('Helvetica').fontSize(10).fillColor('#333')
-       .text('Ich bestätige die Erbringung der o.g. Leistungen:', 50, y);
-    y += 22;
-    doc.fontSize(9).text('Klient/Angehöriger:', 50, y).text('Betreuungskraft:', 320, y);
-    y += 14;
-    const sigH = 55;
-    const drawSig = (dataUrl, x) => {
-      try {
-        const b64 = dataUrl.split(',')[1];
-        doc.image(Buffer.from(b64, 'base64'), x, y, { fit: [200, sigH] });
-      } catch { doc.fontSize(8).fillColor('#999').text('[Signatur nicht darstellbar]', x, y + 20); }
+    const lrow = (x, yy, label, value, labW, totW) => {
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#000').text(label, x, yy, { width: labW });
+      doc.font('Helvetica').text(value || '–', x + labW, yy, { width: totW - labW - 8, height: 12, ellipsis: true });
     };
-    if (ln.signature_client) drawSig(ln.signature_client, 50);
-    else doc.fontSize(8).fillColor('#999').text('— noch nicht unterschrieben —', 50, y + 22);
-    if (ln.signature_betreuer) drawSig(ln.signature_betreuer, 320);
-    else doc.fontSize(8).fillColor('#999').text('— noch nicht unterschrieben —', 320, y + 22);
-    y += sigH + 6;
-    doc.moveTo(50, y).lineTo(250, y).strokeColor('#999').lineWidth(0.5).stroke();
-    doc.moveTo(320, y).lineTo(520, y).stroke();
-    y += 5;
-    doc.fontSize(9).fillColor('#000')
-       .text(ln.signed_by_client || '', 50, y, { width: 200 })
-       .text(ln.signed_by_betreuer || '', 320, y, { width: 200 });
-    y += 13;
-    doc.fontSize(8).fillColor('#666')
-       .text(ln.signed_at_client ? 'Datum: ' + deDate(ln.signed_at_client) : '', 50, y, { width: 200 })
-       .text(ln.signed_at_betreuer ? 'Datum: ' + deDate(ln.signed_at_betreuer) : '', 320, y, { width: 200 });
-    y += 28;
+    let yL = boxY + 19;
+    lrow(M + 8, yL, 'Name:', settings.firma_name, 78, colW); yL += 13;
+    lrow(M + 8, yL, 'Anschrift:', settings.firma_adresse, 78, colW); yL += 13;
+    lrow(M + 8, yL, 'Telefon:', settings.firma_telefon, 78, colW); yL += 13;
+    lrow(M + 8, yL, 'IK-Nummer:', settings.firma_ik_nummer || '–', 78, colW); yL += 13;
+    lrow(M + 8, yL, 'Anerkennung:', settings.firma_anerkennung || '–', 78, colW); yL += 13;
+    doc.fontSize(6.8).fillColor('#666').font('Helvetica')
+       .text('(Anerkennung als Angebot zur Unterstützung im Alltag nach §45a SGB XI / Landesrecht)', M + 8, yL, { width: colW - 16 });
 
-    // Rechtsfooter
+    const xR = M + colW + 20;
+    let yR = boxY + 19;
+    lrow(xR, yR, 'Name:', ln.patient_name, 88, colW); yR += 13;
+    lrow(xR, yR, 'Geburtsdatum:', ln.birth_date ? deDate(ln.birth_date) : '–', 88, colW); yR += 13;
+    lrow(xR, yR, 'Anschrift:', ln.patient_address, 88, colW); yR += 13;
+    lrow(xR, yR, 'Pflegegrad:', String(ln.pflegegrad || '–'), 88, colW); yR += 13;
+    lrow(xR, yR, 'Pflegekasse:', ln.insurance || ln.krankenkasse || '–', 88, colW); yR += 13;
+    lrow(xR, yR, 'Versicherten-Nr.:', ln.insurance_number ? decryptField(ln.insurance_number) : '–', 88, colW);
+
+    // Leistungsart (ankreuzbar)
+    let y = boxY + boxH + 12;
+    const art = ln.leistungsart || '45b';
+    const checkbox = (x, yy, checked, label) => {
+      doc.rect(x, yy, 9, 9).lineWidth(0.9).strokeColor('#000').stroke();
+      if (checked) doc.font('Helvetica-Bold').fontSize(9).fillColor('#000').text('X', x + 1.6, yy + 0.5, { lineBreak: false });
+      doc.font('Helvetica').fontSize(8.5).fillColor('#000').text(label, x + 14, yy + 1, { lineBreak: false });
+    };
+    doc.font('Helvetica-Bold').fontSize(8.5).text('Abrechnung als:', M, y + 1, { lineBreak: false });
+    checkbox(M + 85, y, art === '45b', 'Entlastungsbetrag §45b SGB XI');
+    checkbox(M + 255, y, art === '39', 'Verhinderungspflege §39 SGB XI');
+    checkbox(M + 425, y, art === 'selbstzahler', 'Selbstzahler');
+    y += 22;
+
+    // Einzelnachweis-Tabelle mit Rahmen
+    const cols = [
+      { w: 24,  l: 'Nr.' }, { w: 58, l: 'Datum' }, { w: 72, l: 'Uhrzeit von–bis' },
+      { w: 170, l: 'Art der Leistung' }, { w: 40, l: 'Std.' },
+      { w: 106, l: 'Betreuungskraft' }, { w: 45, l: 'Hz.' }
+    ];
+    const tableX = M;
+    const colX = []; let cx = tableX;
+    cols.forEach(c => { colX.push(cx); cx += c.w; });
+    const tableW = cx - tableX;
+    const rowH = 17;
+
+    const drawHeadRow = (yy) => {
+      doc.rect(tableX, yy, tableW, rowH).fillColor('#EFEAD9').fill();
+      doc.rect(tableX, yy, tableW, rowH).lineWidth(0.8).strokeColor('#000').stroke();
+      cols.forEach((c, i) => {
+        doc.font('Helvetica-Bold').fontSize(8).fillColor('#000')
+           .text(c.l, colX[i] + 3, yy + 5, { width: c.w - 6, align: i === 4 ? 'right' : 'left', lineBreak: false });
+        if (i > 0) doc.moveTo(colX[i], yy).lineTo(colX[i], yy + rowH).lineWidth(0.5).strokeColor('#000').stroke();
+      });
+      return yy + rowH;
+    };
+
+    y = drawHeadRow(y);
+    let total = 0;
+    const initials = (name) => String(name || '').split(' ').map(p => p[0]).filter(Boolean).join('.').toUpperCase() + '.';
+    leistungen.forEach((l, idx) => {
+      if (y > 600) { doc.addPage(); y = 50; y = drawHeadRow(y); }
+      total += num(l.stunden);
+      doc.rect(tableX, y, tableW, rowH).lineWidth(0.5).strokeColor('#888').stroke();
+      const cells = [
+        String(idx + 1), deDate(l.datum), (l.von && l.bis) ? `${l.von} – ${l.bis}` : '–',
+        String(l.leistung || '').substring(0, 42), num(l.stunden).toFixed(2).replace('.', ','),
+        String(l.betreuer || ''), initials(l.betreuer)
+      ];
+      cells.forEach((val, i) => {
+        doc.font('Helvetica').fontSize(8).fillColor('#000')
+           .text(val, colX[i] + 3, y + 5, { width: cols[i].w - 6, align: i === 4 ? 'right' : 'left', height: 10, ellipsis: true, lineBreak: false });
+        if (i > 0) doc.moveTo(colX[i], y).lineTo(colX[i], y + rowH).lineWidth(0.5).strokeColor('#888').stroke();
+      });
+      y += rowH;
+    });
+    // Summenzeile
+    doc.rect(tableX, y, tableW, rowH).lineWidth(0.8).strokeColor('#000').stroke();
+    doc.font('Helvetica-Bold').fontSize(8.5)
+       .text('Gesamtstunden im Abrechnungszeitraum:', colX[1] + 3, y + 5, { lineBreak: false })
+       .text(total.toFixed(2).replace('.', ','), colX[4] + 3, y + 5, { width: cols[4].w - 6, align: 'right', lineBreak: false });
+    y += rowH + 6;
+    doc.font('Helvetica').fontSize(7.5).fillColor('#555')
+       .text('Hz. = Handzeichen der Betreuungskraft.' + (invNum ? ` Die Vergütung wird mit Rechnung Nr. ${invNum} abgerechnet.` : ''), M, y);
+    y += 16;
+
+    // Bestätigung + Abtretung
+    if (y > 580) { doc.addPage(); y = 50; }
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#000').text('Bestätigung', M, y); y += 12;
+    doc.font('Helvetica').fontSize(8.5).fillColor('#000')
+       .text('Hiermit bestätige ich, dass die oben aufgeführten Leistungen an den angegebenen Tagen im angegebenen ' +
+             'Umfang ordnungsgemäß erbracht wurden. Mir ist bekannt, dass unrichtige Angaben zum Verlust des ' +
+             'Leistungsanspruchs führen können.', M, y, { width: W });
+    y += 30;
+    if (art !== 'selbstzahler') {
+      doc.font('Helvetica-Bold').fontSize(9).text('Abtretungserklärung (bei Direktabrechnung mit der Pflegekasse)', M, y); y += 12;
+      doc.font('Helvetica').fontSize(8.5)
+         .text('Ich trete meinen Erstattungsanspruch gegenüber der Pflegekasse in Höhe des Rechnungsbetrags für die ' +
+               'oben genannten Leistungen an den oben genannten Leistungserbringer ab.', M, y, { width: W });
+      y += 28;
+    }
+
+    // Unterschriften (digitale Signaturbilder)
+    if (y > 600) { doc.addPage(); y = 50; }
+    const sigH = 52, sigW = 215;
+    doc.fontSize(8.5).font('Helvetica-Bold')
+       .text('Versicherte Person / Bevollmächtigte(r):', M, y, { lineBreak: false })
+       .text('Betreuungskraft / Leistungserbringer:', M + 280, y, { lineBreak: false });
+    y += 13;
+    const drawSig = (dataUrl, x) => {
+      try { doc.image(Buffer.from(dataUrl.split(',')[1], 'base64'), x, y, { fit: [sigW, sigH] }); }
+      catch { doc.fontSize(8).fillColor('#999').text('[Signatur nicht darstellbar]', x, y + 20, { lineBreak: false }); }
+    };
+    if (ln.signature_client) drawSig(ln.signature_client, M);
+    else doc.fontSize(8).fillColor('#999').text('— noch nicht unterschrieben —', M, y + 22, { lineBreak: false });
+    if (ln.signature_betreuer) drawSig(ln.signature_betreuer, M + 280);
+    else doc.fontSize(8).fillColor('#999').text('— noch nicht unterschrieben —', M + 280, y + 22, { lineBreak: false });
+    y += sigH + 4;
+    doc.moveTo(M, y).lineTo(M + sigW, y).lineWidth(0.6).strokeColor('#000').stroke();
+    doc.moveTo(M + 280, y).lineTo(M + 280 + sigW, y).stroke();
+    y += 4;
+    doc.fontSize(8).fillColor('#000').font('Helvetica')
+       .text((ln.signed_by_client || 'Name in Druckbuchstaben') + (ln.signed_at_client ? ' · ' + deDate(ln.signed_at_client) : ' · Ort, Datum'), M, y, { width: sigW, lineBreak: false })
+       .text((ln.signed_by_betreuer || 'Name in Druckbuchstaben') + (ln.signed_at_betreuer ? ' · ' + deDate(ln.signed_at_betreuer) : ' · Ort, Datum'), M + 280, y, { width: sigW, lineBreak: false });
+    y += 22;
+
+    // Rechtsfooter digitale Signatur
     if (ln.signature_client || ln.signature_betreuer) {
-      doc.fontSize(7.5).fillColor('#999')
-         .text(`Dieser Nachweis wurde digital signiert. Signatur-ID: ${ln.ln_number || ln.id}`, 50, y)
-         .text('Rechtsgültig gemäß eIDAS-Verordnung (einfache elektronische Signatur).', 50, y + 10)
-         .text(`IP: ${ln.signed_ip_client || '–'} | Zeitstempel: ${ln.signed_at_client ? new Date(ln.signed_at_client).toISOString() : '–'}`, 50, y + 20);
+      doc.moveTo(M, y).lineTo(M + W, y).lineWidth(0.4).strokeColor('#bbb').stroke(); y += 6;
+      doc.fontSize(7).fillColor('#777')
+         .text(`Dieser Nachweis wurde digital signiert. Signatur-ID: ${ln.ln_number || ln.id} · ` +
+               'Rechtsgültig gemäß eIDAS-Verordnung (einfache elektronische Signatur).', M, y, { width: W });
+      y += 9;
+      doc.text(`Klient: IP ${ln.signed_ip_client || '–'} · Zeitstempel ${ln.signed_at_client ? new Date(ln.signed_at_client).toISOString() : '–'}` +
+               ` | Betreuer: Zeitstempel ${ln.signed_at_betreuer ? new Date(ln.signed_at_betreuer).toISOString() : '–'}`, M, y, { width: W });
     }
     doc.end();
   } catch (e) { res.status(500).json({ error: e.message }); }

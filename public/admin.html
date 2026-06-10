@@ -356,6 +356,13 @@ a.plink:hover{text-decoration:underline}
               <option value="eingereicht">Eingereicht</option>
             </select>
           </div>
+          <div class="fi" style="flex:0 0 230px"><label>Leistungsart (für Vordruck)</label>
+            <select id="ln-art">
+              <option value="45b">Entlastungsbetrag §45b SGB XI</option>
+              <option value="39">Verhinderungspflege §39 SGB XI</option>
+              <option value="selbstzahler">Selbstzahler</option>
+            </select>
+          </div>
           <button class="btn btn-a btn-sm" onclick="bulkGenerateLn()">⚡ Alle Nachweise für Monat generieren</button>
         </div>
         <table>
@@ -379,6 +386,11 @@ a.plink:hover{text-decoration:underline}
           <div class="fi"><label>Bank</label><input id="s-firma_bank"></div>
           <div class="fi"><label>IBAN</label><input id="s-firma_iban"></div>
           <div class="fi"><label>Steuernummer</label><input id="s-firma_steuernummer"></div>
+          <div class="frow">
+            <div class="fi"><label>IK-Nummer (Institutionskennzeichen)</label><input id="s-firma_ik_nummer" placeholder="z.B. 460000000"></div>
+            <div class="fi"><label>Anerkennungs-Nr. §45a SGB XI</label><input id="s-firma_anerkennung" placeholder="z.B. AzUiA-BE-2026-001"></div>
+          </div>
+          <div class="muted" style="margin-top:8px">IK-Nummer und §45a-Anerkennung erscheinen auf dem kassenkonformen Leistungsnachweis – ohne diese Angaben lehnen viele Pflegekassen die Erstattung ab.</div>
         </div>
         <div class="card">
           <h3>Abrechnung</h3>
@@ -1269,8 +1281,9 @@ async function loadLnList() {
   if (!Array.isArray(lns)) return;
   document.getElementById('ln-tbody').innerHTML = lns.map(ln => {
     const sum = (ln.leistungen || []).reduce((s, l) => s + (parseFloat(l.stunden) || 0), 0);
+    const artLabel = { '45b': '§45b', '39': '§39', 'selbstzahler': 'Selbstz.' }[ln.leistungsart] || '§45b';
     return `<tr>
-      <td style="font-weight:700">${esc(ln.ln_number || ln.id)}</td>
+      <td style="font-weight:700">${esc(ln.ln_number || ln.id)}<div class="muted">${artLabel}</div></td>
       <td>${esc(ln.patient_name || '')}</td>
       <td>${esc(ln.betreuer_name || '')}</td>
       <td class="muted">${deD(ln.period_from)}–${deD(ln.period_to)}</td>
@@ -1289,7 +1302,8 @@ async function loadLnList() {
 async function bulkGenerateLn() {
   const monat = document.getElementById('ln-monat').value;
   if (!monat) { toast('Monat wählen'); return; }
-  const r = await api('/admin/leistungsnachweise/bulk-generate', { method: 'POST', body: { monat } });
+  const leistungsart = document.getElementById('ln-art').value;
+  const r = await api('/admin/leistungsnachweise/bulk-generate', { method: 'POST', body: { monat, leistungsart } });
   if (r.error) { toast('Fehler: ' + r.error); return; }
   toast(`✅ ${r.created.length} Nachweise erstellt, ${r.skipped.length} übersprungen`);
   loadLnList(); loadDashboard();
@@ -1390,7 +1404,7 @@ async function loadAuditLog() {
 }
 
 // ─── Einstellungen ───────────────────────────────────────────────────────────
-const SETTING_KEYS = ['firma_name','firma_adresse','firma_telefon','firma_email','firma_bank','firma_iban','firma_steuernummer','default_hourly_rate','mwst_satz','mwst_hinweis','zahlungsziel_tage'];
+const SETTING_KEYS = ['firma_name','firma_adresse','firma_telefon','firma_email','firma_bank','firma_iban','firma_steuernummer','firma_ik_nummer','firma_anerkennung','default_hourly_rate','mwst_satz','mwst_hinweis','zahlungsziel_tage'];
 
 async function loadSettings() {
   const s = await api('/admin/settings');
