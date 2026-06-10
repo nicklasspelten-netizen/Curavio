@@ -80,4 +80,12 @@ git push -u origin main
 if errorlevel 1 (
     echo.
     echo Fehler beim Upload. Versuche mit --force...
-    git push -u origin mai
+    git push -u origin main --force
+)
+
+echo.
+echo ============================================
+echo  Upload fertig!
+echo  https://github.com/nicklasspelten-netizen/Curavio
+echo ============================================
+pause

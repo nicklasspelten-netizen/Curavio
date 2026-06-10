@@ -28,9 +28,11 @@ Curavio ist eine mobile PWA für ambulante Alltagsbegleitung (Pflegebranche).
 
 ```
 curavio-backend/
-├── server.js              # Haupt-Backend (Express + WS + DB)
+├── server.js              # Haupt-Backend (Express + WS + DB + PDF + Buchhaltung)
+├── check_html_js.js       # Dev-Tool: Syntax-Check der <script>-Blöcke
 ├── public/
-│   ├── index.html         # Gesamte Frontend-SPA (~1200 Zeilen)
+│   ├── index.html         # Mobile SPA (Angehörige + Betreuer)
+│   ├── admin.html         # Disponenten-Dashboard (Desktop, /admin)
 │   ├── manifest.json      # PWA-Manifest
 │   └── sw.js              # Service Worker
 ├── .env                   # Lokale Umgebungsvariablen (nicht in Git)
@@ -140,14 +142,64 @@ GET  /api/messages/:room_id      – Nachrichtenverlauf
 WS   ws://...                    – Echtzeit-Chat (auth + chat + visit_update Events)
 ```
 
-### Admin
+### Admin / Disponent
 ```
 GET  /api/admin/users            – Alle Benutzer
 POST /api/admin/users            – User erstellen
-GET  /api/admin/visits           – Alle Besuche
-GET  /api/admin/stats            – Dashboard-Stats
-POST /api/admin/demo             – Demo-Daten generieren
+GET  /api/admin/visits[/all]     – Alle Besuche (Filter: status, betreuer_id, patient_id, von, bis)
+PATCH /api/admin/visits/:id/assign – Betreuer zuweisen (Disponent)
+GET  /api/admin/stats            – Zähler-Stats
+GET  /api/admin/dashboard        – KPIs (Umsatz, offene Rechnungen, Einsätze, Anfragen)
+GET  /api/admin/betreuer         – Betreuer mit Auslastung/Wochenstunden
+PATCH /api/admin/betreuer/:id    – Profil (Stundensatz, Quali, IBAN, aktiv)
+POST /api/admin/demo             – Demo-Daten generieren (idempotent)
+GET/PUT /api/admin/settings      – Firmen-/Rechnungseinstellungen
 ```
+
+### Rechnungen & Zahlungen
+```
+GET  /api/invoices                      – Eigene Rechnungen (Rolle-abhängig)
+GET  /api/invoices/:id/pdf              – PDF (Besitzer od. Admin; Token auch via ?token=)
+GET  /api/admin/invoices                – Alle Rechnungen
+POST /api/admin/invoices/generate       – Auto-Generierung aus Arbeitszeiten
+                                          Body: {recipient_id, type:'kunde'|'betreuer',
+                                                 period_from, period_to,
+                                                 apply_entlastung, apply_verhinderung}
+                                          → zieht Freibeträge automatisch ab, §35a-Hinweis
+GET  /api/admin/invoices/:id/pdf        – Rechnungs-PDF (pdfkit)
+PATCH /api/admin/invoices/:id/status    – entwurf|versendet|bezahlt|storniert
+                                          (Storno bucht Freibeträge zurück)
+POST /api/admin/invoices/:id/payment    – Zahlung erfassen (markiert bezahlt bei Vollzahlung)
+GET  /api/admin/payments[/offen]        – Zahlungen / offene+überfällige Rechnungen
+```
+
+### Freibeträge (§45b SGB XI · §39 SGB XI · §35a EStG)
+```
+GET  /api/freibetraege/:patient_id/:year        – Jahresübersicht (Angehörige/Betreuer/Admin)
+GET  /api/admin/freibetraege/:pid/check         – Restbudgets aktuelles Jahr
+GET/PUT /api/admin/freibetraege/:pid/:year      – Budgets lesen/setzen
+```
+Neue Patienten bekommen automatisch einen Freibetrag-Datensatz mit Richtwerten
+nach Pflegegrad (Pflegegeld, Verhinderungspflege ab PG2, Entlastung 125€/Monat).
+
+### Buchhaltung
+```
+GET /api/admin/buchhaltung/monat/:YYYY-MM   – Monatsabschluss (Einnahmen/Ausgaben/Ergebnis)
+GET /api/admin/buchhaltung/betreuer/:id     – Betreuer-Abrechnung (?monat=YYYY-MM)
+GET /api/admin/buchhaltung/export/csv       – Steuerberater-CSV (?von=&bis=)
+GET /api/admin/buchhaltung/export/datev     – DATEV-ähnlicher Buchungsstapel
+GET /api/admin/leistungsnachweis/:visit_id  – Leistungsnachweis-PDF für Pflegekasse
+GET/POST /api/admin/expenses                – Ausgaben
+GET /api/betreuer/abrechnung                – Eigene Monatsabrechnung (Stunden × Satz)
+GET/PUT /api/betreuer/availability          – Verfügbarkeit/Abwesenheit
+POST /api/visits/:id/rating                 – Besuch bewerten (1-5 Sterne, Angehörige)
+```
+
+### Disponenten-Dashboard
+`public/admin.html` → erreichbar unter **/admin** (Desktop, nur role=admin).
+Tabs: Übersicht (KPIs + Anfragen-Queue + Live-Feed), Einsatzplanung (Wochenkalender
+mit Konflikterkennung), Betreuer, Klienten (Freibeträge), Rechnungen & Buchhaltung,
+Einstellungen.
 
 ---
 
@@ -244,23 +296,31 @@ push_zu_github.bat
 
 ## Offene Aufgaben / Nächste Schritte
 
-### Hohe Priorität
-- [ ] **index.lock Problem lösen** – `.git/index.lock` Datei blockiert `git add/commit` im bat-Script. Nur `git push` funktioniert aktuell (da Commit bereits in Sandbox erstellt). Lösung: `del .git\index.lock` manuell ausführen.
-- [ ] **Admin-Dashboard** – Vollständige Admin-Oberfläche für Benutzerverwaltung, alle Besuche einsehen, Statistiken
-- [ ] **Betreuer-Account anlegen** – Über `/api/admin/demo` oder direkt in DB einen echten Betreuer-User erstellen und testen
+### Erledigt (Juni 2026)
+- [x] **index.lock Problem** – bat-Script löscht Lock-Dateien vor `git add`
+- [x] **Admin-Dashboard** – `public/admin.html` unter /admin (6 Tabs, Disposition + Buchhaltung)
+- [x] **Rechnungsstellung** – Auto-Generierung aus Arbeitszeiten inkl. Freibetragsabzug + PDF (pdfkit)
+- [x] **Freibetragslogik** – §45b Entlastungsbetrag, §39 Verhinderungspflege, §35a-Hinweis, Restbudget-Tracking
+- [x] **Zahlungsverfolgung** – Zahlungen buchen, Überfällig-Erkennung, Monatsabschluss, CSV/DATEV-Export
+- [x] **Kalenderansicht** – Wochenkalender im Admin mit Konflikterkennung
+- [x] **Demo-Daten idempotent** – POST /api/admin/demo mit ON CONFLICT DO NOTHING
+- [x] **WS-Token-Validierung** – auth-Event vor join/chat, Reconnect nur bei gültigem Login
+- [x] **Kritischer Bugfix** – VARCHAR-Visit-IDs in onclick-Handlern jetzt gequotet (Annehmen/Stempeln funktionierte vorher nie)
+- [x] **Pflichtbericht vor Ausstempeln** + optionaler GPS-Zeitstempel
+- [x] **Klienten-Finanzen** – Rechnungen einsehen/PDF, Freibetragsstand, Bewertung nach Besuch
 
 ### Mittlere Priorität
-- [ ] **Push-Benachrichtigungen** – Web Push API für neue Aufträge / Statusänderungen
-- [ ] **Kalenderansicht** – Wochenkalender für Betreuer statt Liste
+- [ ] **Push-Benachrichtigungen** – Web Push API (VAPID-Keys nötig) für neue Aufträge / Statusänderungen
 - [ ] **Patientenprofil** – Detailansicht mit Medikamenten, Notizen, Kontakten
-- [ ] **Rechnungsstellung** – Aus Arbeitszeiten automatisch Rechnung generieren (PDF)
-- [ ] **Mehrere Patienten** – Angehörige mit mehreren Pflegebedürftigen
+- [ ] **Mehrere Patienten** – Angehörige mit mehreren Pflegebedürftigen (UI; API unterstützt es bereits)
+- [ ] **Freibetrags-Werte prüfen** – Defaults folgen der Projektvorgabe (125€/Monat §45b, 1.612€
+      Verhinderungspflege, 4.000€ §35a). Gesetzliche Anpassungen pro Klient im Admin pflegbar.
 
 ### Technische Schulden
 - [ ] **index.html aufteilen** – React oder zumindest separate JS/CSS-Dateien
-- [ ] **Fehlerbehandlung** – Besseres Error-Handling im Frontend
-- [ ] **Tests** – API-Tests mit Jest oder Supertest
+- [ ] **Tests** – API-Tests mit Jest oder Supertest (aktuell Syntax-Check via check_html_js.js)
 - [ ] **Logging** – Structured logging statt console.log
+- [ ] **Rechnungsnummern** – String-Sortierung bricht bei >999 Rechnungen/Jahr
 
 ---
 

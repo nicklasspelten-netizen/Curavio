@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curavio – Disposition & Buchhaltung</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --cream:#F7F2E4;--cream-lt:#FDFAF2;--cream-dk:#EDE7D5;
+  --forest:#1C3A2A;--forest-md:#2D5640;--forest-lt:#E8EDE9;
+  --amber:#C47B3A;--amber-lt:#FBF0E4;--amber-dk:#A8652E;
+  --text:#1A2A1E;--muted:#6E7B72;--muted-lt:#A8B5AE;
+  --border:#E0D9C8;--border-dk:#C8BDA8;
+  --success:#2D6A4F;--success-lt:#E8F5EE;
+  --warn:#B45309;--warn-lt:#FEF3C7;
+  --danger:#991B1B;--danger-lt:#FEE2E2;
+  --info:#1E40AF;--info-lt:#DBEAFE;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;
+  --f-serif:'Cormorant Garant',Georgia,serif;
+  --f-sans:'DM Sans',system-ui,sans-serif;
+}
+body{font-family:var(--f-sans);background:var(--cream);color:var(--text);min-height:100vh}
+
+/* Login */
+#login-view{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--forest)}
+.login-box{background:var(--cream-lt);border-radius:24px;padding:36px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.login-box h1{font-family:var(--f-serif);font-size:28px;color:var(--forest);text-align:center;margin-bottom:4px}
+.login-box .sub{text-align:center;font-size:13px;color:var(--muted);margin-bottom:24px}
+.fi{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.fi label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.fi input,.fi select,.fi textarea{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);
+  font-size:14px;font-family:var(--f-sans);color:var(--text);background:var(--cream);outline:none}
+.fi input:focus,.fi select:focus{border-color:var(--forest)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:var(--r-md);
+  padding:11px 20px;font-size:14px;font-weight:700;font-family:var(--f-sans);cursor:pointer;transition:all .2s}
+.btn-f{background:var(--forest);color:#fff}.btn-f:hover{background:var(--forest-md)}
+.btn-a{background:var(--amber);color:#fff}.btn-a:hover{background:var(--amber-dk)}
+.btn-g{background:transparent;color:var(--forest);border:1.5px solid var(--border-dk)}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
+.err{background:var(--danger-lt);color:var(--danger);border-radius:var(--r-md);padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px;display:none}
+
+/* App layout */
+#app-view{display:none;min-height:100vh}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:230px;background:var(--forest);color:#fff;padding:24px 0;flex-shrink:0;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.sb-logo{font-family:var(--f-serif);font-size:24px;font-weight:600;padding:0 24px 6px;color:#F2C98A}
+.sb-sub{font-size:11px;color:rgba(255,255,255,.4);padding:0 24px 24px}
+.sb-item{display:flex;align-items:center;gap:12px;padding:13px 24px;font-size:14px;font-weight:600;
+  color:rgba(255,255,255,.65);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+.sb-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.sb-item.act{background:rgba(255,255,255,.1);color:#fff;border-left-color:var(--amber)}
+.sb-foot{margin-top:auto;padding:16px 24px;font-size:12px;color:rgba(255,255,255,.4)}
+.sb-foot button{background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.7);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;width:100%}
+.main{flex:1;padding:28px 32px;max-width:1400px}
+.page{display:none}.page.act{display:block}
+.page h2{font-family:var(--f-serif);font-size:30px;font-weight:600;color:var(--forest);margin-bottom:4px}
+.page .psub{font-size:13px;color:var(--muted);margin-bottom:24px}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px}
+.kpi{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 20px}
+.kpi .v{font-family:var(--f-serif);font-size:30px;font-weight:600;color:var(--forest)}
+.kpi .l{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.kpi.warn .v{color:var(--amber-dk)}
+
+/* Cards & tables */
+.card{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;margin-bottom:20px}
+.card h3{font-family:var(--f-serif);font-size:19px;font-weight:600;color:var(--text);margin-bottom:14px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:9px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--border)}
+td{padding:10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:rgba(28,58,42,.025)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:700}
+.chip-g{background:var(--success-lt);color:var(--success)}
+.chip-a{background:var(--warn-lt);color:var(--warn)}
+.chip-b{background:var(--info-lt);color:var(--info)}
+.chip-r{background:var(--danger-lt);color:var(--danger)}
+.chip-m{background:var(--cream-dk);color:var(--muted)}
+.bar{height:7px;background:var(--cream-dk);border-radius:100px;overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;border-radius:100px;background:linear-gradient(90deg,var(--amber),var(--forest))}
+
+/* Kalender */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.cal-day{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-md);min-height:170px;padding:8px}
+.cal-day.today{border-color:var(--amber);border-width:2px}
+.cal-h{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;text-align:center}
+.cal-v{border-radius:7px;padding:5px 7px;font-size:11px;font-weight:600;color:#fff;margin-bottom:5px;cursor:default;line-height:1.35}
+.cal-v small{display:block;opacity:.8;font-weight:500}
+.conflict{outline:2px solid var(--danger);outline-offset:1px}
+
+/* Forms inline */
+.frow{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.frow .fi{flex:1;min-width:140px;margin-bottom:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+
+/* Modal */
+.modal{display:none;position:fixed;inset:0;background:rgba(26,42,30,.5);z-index:100;align-items:center;justify-content:center;padding:20px}
+.modal.on{display:flex}
+.modal-box{background:var(--cream-lt);border-radius:20px;padding:28px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-box h3{font-family:var(--f-serif);font-size:22px;color:var(--forest);margin-bottom:18px}
+
+/* Feed */
+.feed{max-height:300px;overflow-y:auto}
+.feed-item{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.feed-item .ts{color:var(--muted-lt);font-size:11px;flex-shrink:0;width:55px}
+
+/* Rechnung Vorschau */
+.inv-prev{background:var(--cream);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;font-size:13px}
+.inv-prev .row{display:flex;justify-content:space-between;padding:5px 0}
+.inv-prev .row.total{border-top:2px solid var(--forest);font-weight:700;font-size:15px;margin-top:6px;padding-top:10px}
+.inv-prev .row.ded{color:var(--success)}
+.inv-prev .hint{background:var(--amber-lt);border-radius:8px;padding:10px;color:var(--amber-dk);font-size:12px;margin-top:12px}
+
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;border-radius:var(--r-md);padding:12px 22px;font-size:13px;font-weight:600;z-index:200;opacity:0;pointer-events:none;transition:opacity .3s;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.toast.on{opacity:1}
+.muted{color:var(--muted);font-size:12px}
+a.plink{color:var(--forest);font-weight:700;text-decoration:none;font-size:12px}
+a.plink:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ LOGIN ═══════════ -->
+<div id="login-view">
+  <div class="login-box">
+    <h1>Curavio Disposition</h1>
+    <div class="sub">Einsatzplanung · Buchhaltung · Verwaltung</div>
+    <div id="login-err" class="err"></div>
+    <div class="fi"><label>E-Mail</label><input type="email" id="li-email" placeholder="admin@curavio.de"></div>
+    <div class="fi"><label>Passwort</label><input type="password" id="li-pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn btn-a" style="width:100%;margin-top:6px" onclick="doLogin()">Anmelden →</button>
+  </div>
+</div>
+
+<!-- ═══════════ APP ═══════════ -->
+<div id="app-view">
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sb-logo">Curavio</div>
+    <div class="sb-sub">Disposition &amp; Buchhaltung</div>
+    <div class="sb-item act" data-page="pg-ueber" onclick="nav(this)">📊 Übersicht</div>
+    <div class="sb-item" data-page="pg-plan" onclick="nav(this)">🗓 Einsatzplanung</div>
+    <div class="sb-item" data-page="pg-betreuer" onclick="nav(this)">🧑‍⚕️ Betreuer</div>
+    <div class="sb-item" data-page="pg-klienten" onclick="nav(this)">🏡 Klienten</div>
+    <div class="sb-item" data-page="pg-rechnungen" onclick="nav(this)">💶 Rechnungen</div>
+    <div class="sb-item" data-page="pg-settings" onclick="nav(this)">⚙️ Einstellungen</div>
+    <div class="sb-foot">
+      <div id="sb-user" style="margin-bottom:10px">–</div>
+      <button onclick="doLogout()">Abmelden</button>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <!-- ── ÜBERSICHT ── -->
+    <div class="page act" id="pg-ueber">
+      <h2>Übersicht</h2>
+      <div class="psub" id="ueber-date">–</div>
+      <div class="kpis">
+        <div class="kpi"><div class="v" id="k-umsatz-heute">–</div><div class="l">Umsatz heute</div></div>
+        <div class="kpi"><div class="v" id="k-umsatz-monat">–</div><div class="l">Umsatz Monat</div></div>
+        <div class="kpi warn"><div class="v" id="k-offen">–</div><div class="l">Offene Rechnungen</div></div>
+        <div class="kpi"><div class="v" id="k-einsatz">–</div><div class="l">Betreuer im Einsatz</div></div>
+        <div class="kpi warn"><div class="v" id="k-anfragen">–</div><div class="l">Offene Anfragen</div></div>
+        <div class="kpi"><div class="v" id="k-besuche">–</div><div class="l">Besuche heute</div></div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h3>🔔 Anfragen-Queue <span class="muted">– sofort zuweisen</span></h3>
+          <div id="queue-list"><div class="muted">Wird geladen …</div></div>
+        </div>
+        <div class="card">
+          <h3>📡 Live-Feed</h3>
+          <div class="feed" id="live-feed"><div class="muted">Warte auf Ereignisse …</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── EINSATZPLANUNG ── -->
+    <div class="page" id="pg-plan">
+      <h2>Einsatzplanung</h2>
+      <div class="psub">Wochenkalender · farbcodiert nach Betreuer · Konflikte rot markiert</div>
+      <div class="card">
+        <div class="frow" style="margin-bottom:14px">
+          <button class="btn btn-g btn-sm" onclick="calWeek(-1)">← Vorwoche</button>
+          <div style="font-weight:700;font-size:15px;align-self:center" id="cal-range">–</div>
+          <button class="btn btn-g btn-sm" onclick="calWeek(1)">Nächste →</button>
+          <div style="flex:1"></div>
+          <button class="btn btn-f btn-sm" onclick="openVisitModal()">+ Neuer Auftrag</button>
+        </div>
+        <div class="cal" id="cal-grid"></div>
+        <div id="cal-legend" style="margin-top:12px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px"></div>
+      </div>
+      <div class="card">
+        <h3>Verfügbarkeit (Abwesenheiten der Betreuer)</h3>
+        <div id="avail-list" class="muted">–</div>
+      </div>
+    </div>
+
+    <!-- ── BETREUER ── -->
+    <div class="page" id="pg-betreuer">
+      <h2>Betreuer</h2>
+      <div class="psub">Auslastung, Stundensätze, Abrechnung</div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Name</th><th>Kontakt</th><th>Stundensatz</th><th>Std. diese Woche</th><th>Auslastung</th><th>Offene Besuche</th><th>Status</th><th></th></tr></thead>
+          <tbody id="betreuer-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card" id="babr-card" style="display:none">
+        <h3 id="babr-title">Monatsabrechnung</h3>
+        <div class="frow" style="margin-bottom:12px">
+          <div class="fi" style="flex:0 0 160px"><label>Monat</label><input type="month" id="babr-monat" onchange="loadBetreuerAbrechnung()"></div>
+        </div>
+        <div id="babr-body"></div>
+      </div>
+    </div>
+
+    <!-- ── KLIENTEN ── -->
+    <div class="page" id="pg-klienten">
+      <h2>Klienten</h2>
+      <div class="psub">Pflegegrade, Versicherung, Freibeträge &amp; Restbudgets</div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Name</th><th>Adresse</th><th>Pflegegrad</th><th>Versicherung</th><th>Betreuer</th><th></th></tr></thead>
+          <tbody id="klienten-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card" id="fb-card" style="display:none">
+        <h3 id="fb-title">Freibeträge</h3>
+        <div class="frow" style="margin-bottom:14px">
+          <div class="fi" style="flex:0 0 120px"><label>Jahr</label><input type="number" id="fb-year" value="2026" onchange="loadFreibetrag()"></div>
+        </div>
+        <div id="fb-body"></div>
+      </div>
+    </div>
+
+    <!-- ── RECHNUNGEN & BUCHHALTUNG ── -->
+    <div class="page" id="pg-rechnungen">
+      <h2>Rechnungen &amp; Buchhaltung</h2>
+      <div class="psub">Rechnungen generieren, Zahlungen buchen, Monatsabschluss, Export</div>
+
+      <div class="card">
+        <h3>Rechnung generieren</h3>
+        <div class="frow">
+          <div class="fi"><label>Typ</label>
+            <select id="gen-type" onchange="fillGenRecipients()">
+              <option value="kunde">Kundenrechnung (Patient)</option>
+              <option value="betreuer">Betreuer-Gutschrift</option>
+            </select>
+          </div>
+          <div class="fi"><label>Empfänger</label><select id="gen-recipient"></select></div>
+          <div class="fi"><label>Von</label><input type="date" id="gen-from"></div>
+          <div class="fi"><label>Bis</label><input type="date" id="gen-to"></div>
+        </div>
+        <div class="frow" style="margin-top:12px">
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="gen-entl" checked> Entlastungsbetrag §45b abziehen</label>
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="gen-vp"> Verhinderungspflege §39 abziehen</label>
+          <div style="flex:1"></div>
+          <button class="btn btn-a" onclick="generateInvoice()">⚡ Rechnung generieren</button>
+        </div>
+        <div id="gen-result" style="margin-top:16px"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Monatsabschluss</h3>
+          <div class="frow" style="margin-bottom:12px">
+            <div class="fi" style="flex:0 0 160px"><label>Monat</label><input type="month" id="ma-monat" onchange="loadMonatsabschluss()"></div>
+          </div>
+          <div id="ma-body" class="muted">–</div>
+        </div>
+        <div class="card">
+          <h3>Export für Steuerberater</h3>
+          <div class="frow">
+            <div class="fi"><label>Von</label><input type="date" id="exp-von"></div>
+            <div class="fi"><label>Bis</label><input type="date" id="exp-bis"></div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:14px">
+            <button class="btn btn-g btn-sm" onclick="exportCsv('csv')">⬇ CSV-Export</button>
+            <button class="btn btn-g btn-sm" onclick="exportCsv('datev')">⬇ DATEV-Format</button>
+          </div>
+          <h3 style="margin-top:22px">Ausgabe erfassen</h3>
+          <div class="frow">
+            <div class="fi"><label>Kategorie</label><select id="exp-cat"></select></div>
+            <div class="fi"><label>Beschreibung</label><input id="exp-desc"></div>
+            <div class="fi" style="flex:0 0 110px"><label>Betrag €</label><input type="number" step="0.01" id="exp-amount"></div>
+            <button class="btn btn-f btn-sm" onclick="addExpense()">Buchen</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Alle Rechnungen</h3>
+        <div class="frow" style="margin-bottom:12px">
+          <select id="inv-filter" onchange="loadInvoices()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r-md);background:var(--cream);font-family:var(--f-sans)">
+            <option value="">Alle Status</option>
+            <option value="entwurf">Entwurf</option>
+            <option value="versendet">Versendet</option>
+            <option value="bezahlt">Bezahlt</option>
+            <option value="überfällig">Überfällig</option>
+            <option value="storniert">Storniert</option>
+          </select>
+        </div>
+        <table>
+          <thead><tr><th>Nr.</th><th>Typ</th><th>Empfänger</th><th>Zeitraum</th><th>Netto</th><th>Brutto</th><th>Status</th><th>Fällig</th><th style="min-width:230px">Aktionen</th></tr></thead>
+          <tbody id="inv-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── EINSTELLUNGEN ── -->
+    <div class="page" id="pg-settings">
+      <h2>Einstellungen</h2>
+      <div class="psub">Rechnungsvorlage, Stundensätze, MwSt</div>
+      <div class="grid2">
+        <div class="card">
+          <h3>Firma / Rechnungsvorlage</h3>
+          <div class="fi"><label>Firmenname</label><input id="s-firma_name"></div>
+          <div class="fi"><label>Adresse</label><input id="s-firma_adresse"></div>
+          <div class="fi"><label>Telefon</label><input id="s-firma_telefon"></div>
+          <div class="fi"><label>E-Mail</label><input id="s-firma_email"></div>
+          <div class="fi"><label>Bank</label><input id="s-firma_bank"></div>
+          <div class="fi"><label>IBAN</label><input id="s-firma_iban"></div>
+          <div class="fi"><label>Steuernummer</label><input id="s-firma_steuernummer"></div>
+        </div>
+        <div class="card">
+          <h3>Abrechnung</h3>
+          <div class="fi"><label>Standard-Stundensatz €</label><input type="number" step="0.01" id="s-default_hourly_rate"></div>
+          <div class="fi"><label>MwSt-Satz % (0 = §4 Nr.16 UStG, soziale Dienstleistung)</label><input type="number" step="0.01" id="s-mwst_satz"></div>
+          <div class="fi"><label>MwSt-Hinweistext auf Rechnung</label><input id="s-mwst_hinweis"></div>
+          <div class="fi"><label>Zahlungsziel (Tage)</label><input type="number" id="s-zahlungsziel_tage"></div>
+          <button class="btn btn-f" style="margin-top:10px" onclick="saveSettings()">Speichern ✓</button>
+          <div class="muted" style="margin-top:18px">
+            Freibetragsregeln: Entlastungsbetrag (€/Monat), Verhinderungspflege-Budget und §35a-Maximum
+            werden pro Klient und Jahr im Tab „Klienten“ gepflegt. Neue Klienten erhalten automatisch
+            Richtwerte nach Pflegegrad.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<!-- ── Modal: Neuer Auftrag ── -->
+<div class="modal" id="modal-visit">
+  <div class="modal-box">
+    <h3>Neuen Auftrag anlegen</h3>
+    <div class="fi"><label>Patient</label><select id="mv-patient"></select></div>
+    <div class="fi"><label>Betreuer</label><select id="mv-betreuer"><option value="">– offen (Anfrage) –</option></select></div>
+    <div class="frow">
+      <div class="fi"><label>Datum</label><input type="date" id="mv-date"></div>
+      <div class="fi"><label>Uhrzeit</label><input type="time" id="mv-time" value="10:00"></div>
+      <div class="fi" style="flex:0 0 110px"><label>Dauer (Min.)</label><input type="number" id="mv-dur" value="60"></div>
+    </div>
+    <div class="fi" style="margin-top:14px"><label>Leistung</label>
+      <select id="mv-service">
+        <option>Alltagsbegleitung</option><option>Gesellschaft</option><option>Hauswirtschaft</option>
+        <option>Einkaufen</option><option>Begleitung</option><option>Verhinderungspflege</option>
+      </select>
+    </div>
+    <div class="fi"><label>Notizen</label><textarea id="mv-notes" rows="2"></textarea></div>
+    <div id="mv-conflict" style="display:none;background:var(--danger-lt);color:var(--danger);border-radius:8px;padding:10px;font-size:12px;font-weight:600;margin-bottom:10px"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-f" style="flex:1" onclick="createVisit()">Anlegen ✓</button>
+      <button class="btn btn-g" onclick="closeModal('modal-visit')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Betreuer bearbeiten ── -->
+<div class="modal" id="modal-betreuer">
+  <div class="modal-box">
+    <h3>Betreuer bearbeiten</h3>
+    <input type="hidden" id="mb-id">
+    <div class="fi"><label>Name</label><input id="mb-name"></div>
+    <div class="frow">
+      <div class="fi"><label>Telefon</label><input id="mb-phone"></div>
+      <div class="fi" style="flex:0 0 140px"><label>Stundensatz €</label><input type="number" step="0.01" id="mb-rate"></div>
+    </div>
+    <div class="fi" style="margin-top:14px"><label>Qualifikationen (Komma-getrennt)</label><input id="mb-quali" placeholder="z.B. Betreuungskraft §43b, Erste Hilfe"></div>
+    <div class="frow">
+      <div class="fi"><label>IBAN</label><input id="mb-iban"></div>
+      <div class="fi" style="flex:0 0 150px"><label>Steuer-ID</label><input id="mb-taxid"></div>
+    </div>
+    <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-top:14px"><input type="checkbox" id="mb-active" checked> Aktiv</label>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-f" style="flex:1" onclick="saveBetreuer()">Speichern ✓</button>
+      <button class="btn btn-g" onclick="closeModal('modal-betreuer')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Zahlung erfassen ── -->
+<div class="modal" id="modal-payment">
+  <div class="modal-box">
+    <h3>Zahlung erfassen</h3>
+    <input type="hidden" id="mp-inv">
+    <div class="muted" id="mp-info" style="margin-bottom:14px">–</div>
+    <div class="frow">
+      <div class="fi"><label>Betrag €</label><input type="number" step="0.01" id="mp-amount"></div>
+      <div class="fi"><label>Datum</label><input type="date" id="mp-date"></div>
+    </div>
+    <div class="frow" style="margin-top:14px">
+      <div class="fi"><label>Zahlart</label>
+        <select id="mp-method"><option value="überweisung">Überweisung</option><option value="lastschrift">Lastschrift</option><option value="bar">Bar</option></select>
+      </div>
+      <div class="fi"><label>Referenz / Verwendungszweck</label><input id="mp-ref"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-f" style="flex:1" onclick="savePayment()">Buchen ✓</button>
+      <button class="btn btn-g" onclick="closeModal('modal-payment')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast-el"></div>
+
+<script>
+// ─── Basis ───────────────────────────────────────────────────────────────────
+const API = window.location.origin + '/api';
+let TOKEN = localStorage.getItem('curavio_admin_token') || null;
+let USER  = JSON.parse(localStorage.getItem('curavio_admin_user') || 'null');
+let ws = null;
+let CACHE = { patients: [], betreuer: [], invoices: [] };
+
+const eur = n => (parseFloat(n||0)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+const deD = d => d ? new Date(d).toLocaleDateString('de-DE') : '–';
+const deT = d => d ? new Date(d).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '–';
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function toast(m){const t=document.getElementById('toast-el');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),3000);}
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...(TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {}) },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  if (res.status === 401) { doLogout(); throw new Error('Session abgelaufen'); }
+  return res.json();
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const err = document.getElementById('login-err');
+  err.style.display = 'none';
+  const data = await fetch(API + '/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: document.getElementById('li-email').value, password: document.getElementById('li-pw').value })
+  }).then(r => r.json()).catch(() => ({ error: 'Server nicht erreichbar' }));
+  if (data.error) { err.textContent = data.error; err.style.display = 'block'; return; }
+  if (data.user.role !== 'admin') { err.textContent = 'Kein Admin-Konto. Zugriff verweigert.'; err.style.display = 'block'; return; }
+  TOKEN = data.token; USER = data.user;
+  localStorage.setItem('curavio_admin_token', TOKEN);
+  localStorage.setItem('curavio_admin_user', JSON.stringify(USER));
+  showApp();
+}
+
+function doLogout() {
+  TOKEN = null; USER = null;
+  localStorage.removeItem('curavio_admin_token');
+  localStorage.removeItem('curavio_admin_user');
+  if (ws) { try { ws.close(); } catch{} ws = null; }
+  document.getElementById('app-view').style.display = 'none';
+  document.getElementById('login-view').style.display = 'flex';
+}
+
+function showApp() {
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('app-view').style.display = 'block';
+  document.getElementById('sb-user').textContent = USER?.name || '';
+  document.getElementById('ueber-date').textContent = new Date().toLocaleDateString('de-DE', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  // Default-Werte
+  const now = new Date();
+  const ym = now.toISOString().substring(0,7);
+  const first = ym + '-01';
+  document.getElementById('ma-monat').value = ym;
+  document.getElementById('babr-monat').value = ym;
+  document.getElementById('gen-from').value = first;
+  document.getElementById('gen-to').value = now.toISOString().substring(0,10);
+  document.getElementById('exp-von').value = now.getFullYear() + '-01-01';
+  document.getElementById('exp-bis').value = now.toISOString().substring(0,10);
+  document.getElementById('fb-year').value = now.getFullYear();
+  document.getElementById('mp-date').value = now.toISOString().substring(0,10);
+  document.getElementById('mv-date').value = now.toISOString().substring(0,10);
+  connectWS();
+  loadBase().then(() => { loadDashboard(); loadCalendar(); loadBetreuerList(); loadKlienten(); loadInvoices(); loadMonatsabschluss(); loadSettings(); loadCategories(); loadAvailability(); });
+}
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function nav(el) {
+  document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('act'));
+  el.classList.add('act');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('act'));
+  document.getElementById(el.dataset.page).classList.add('act');
+}
+
+function closeModal(id){ document.getElementById(id).classList.remove('on'); }
+
+// ─── Stammdaten ──────────────────────────────────────────────────────────────
+async function loadBase() {
+  const [pats, betr] = await Promise.all([api('/patients'), api('/admin/betreuer')]);
+  CACHE.patients = Array.isArray(pats) ? pats : [];
+  CACHE.betreuer = Array.isArray(betr) ? betr : [];
+  fillGenRecipients();
+  // Auftrags-Modal füllen
+  document.getElementById('mv-patient').innerHTML = CACHE.patients.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  document.getElementById('mv-betreuer').innerHTML = '<option value="">– offen (Anfrage) –</option>' +
+    CACHE.betreuer.filter(b => b.active !== false).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+}
+
+function fillGenRecipients() {
+  const type = document.getElementById('gen-type').value;
+  const sel = document.getElementById('gen-recipient');
+  sel.innerHTML = (type === 'kunde' ? CACHE.patients : CACHE.betreuer)
+    .map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+}
+
+// ─── WebSocket Live-Feed ─────────────────────────────────────────────────────
+function feedAdd(text) {
+  const f = document.getElementById('live-feed');
+  if (f.querySelector('.muted')) f.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'feed-item';
+  div.innerHTML = `<span class="ts">${new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</span><span>${esc(text)}</span>`;
+  f.prepend(div);
+  while (f.children.length > 30) f.removeChild(f.lastChild);
+}
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: TOKEN }));
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'visit_update') { feedAdd('Besuch aktualisiert (' + (msg.visit_id || '') + ')'); loadDashboard(); loadCalendar(); }
+    if (msg.type === 'new_assignment') { feedAdd('🔔 Neue Auftragsanfrage eingegangen'); loadDashboard(); }
+    if (msg.type === 'new_report') { feedAdd('📋 Neuer Besuchsbericht'); }
+  };
+  ws.onclose = () => { if (TOKEN) setTimeout(connectWS, 4000); };
+}
+
+// ─── Übersicht ───────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const d = await api('/admin/dashboard');
+  if (d.error) return;
+  document.getElementById('k-umsatz-heute').textContent = eur(d.umsatz_heute);
+  document.getElementById('k-umsatz-monat').textContent = eur(d.umsatz_monat);
+  document.getElementById('k-offen').textContent = d.offene_rechnungen + ' / ' + eur(d.offene_rechnungen_summe);
+  document.getElementById('k-einsatz').textContent = d.betreuer_im_einsatz;
+  document.getElementById('k-anfragen').textContent = d.offene_anfragen;
+  document.getElementById('k-besuche').textContent = d.besuche_heute;
+  loadQueue();
+}
+
+async function loadQueue() {
+  const visits = await api('/admin/visits/all?status=anfrage');
+  const el = document.getElementById('queue-list');
+  if (!Array.isArray(visits) || !visits.length) { el.innerHTML = '<div class="muted">Keine offenen Anfragen. 🎉</div>'; return; }
+  el.innerHTML = visits.map(v => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px">${esc(v.service || (v.services||[])[0] || 'Besuch')} – ${esc(v.patient_name || '')}</div>
+        <div class="muted">${deD(v.scheduled_at)} ${deT(v.scheduled_at)} Uhr · ${v.duration_min || 60} Min.</div>
+      </div>
+      <select id="q-${v.id}" style="padding:6px;border:1.5px solid var(--border);border-radius:8px;background:var(--cream)">
+        ${CACHE.betreuer.filter(b=>b.active!==false).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}
+      </select>
+      <button class="btn btn-f btn-sm" onclick="assignVisit('${v.id}')">Zuweisen</button>
+    </div>`).join('');
+}
+
+async function assignVisit(id) {
+  const bid = document.getElementById('q-' + id)?.value;
+  if (!bid) return;
+  const res = await api('/admin/visits/' + id + '/assign', { method: 'PATCH', body: { betreuer_id: bid } });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Betreuer zugewiesen');
+  loadDashboard(); loadCalendar();
+}
+
+// ─── Einsatzplanung / Kalender ───────────────────────────────────────────────
+let calOffset = 0;
+const CAL_COLORS = ['#1C3A2A','#C47B3A','#1E40AF','#2D6A4F','#B45309','#6D28D9','#991B1B'];
+
+function calWeek(dir) { calOffset += dir; loadCalendar(); }
+
+function weekStart(offset) {
+  const now = new Date();
+  const s = new Date(now);
+  s.setDate(now.getDate() - ((now.getDay() + 6) % 7) + offset * 7);
+  s.setHours(0,0,0,0);
+  return s;
+}
+
+async function loadCalendar() {
+  const start = weekStart(calOffset);
+  const end = new Date(start); end.setDate(start.getDate() + 7);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('cal-range').textContent = deD(start) + ' – ' + deD(new Date(end - 86400000));
+
+  const visits = await api(`/admin/visits/all?von=${iso(start)}&bis=${iso(new Date(end-86400000))}`);
+  if (!Array.isArray(visits)) return;
+
+  // Betreuer → Farbe
+  const colorMap = {};
+  CACHE.betreuer.forEach((b, i) => colorMap[b.id] = CAL_COLORS[i % CAL_COLORS.length]);
+
+  // Konflikte: Überschneidungen beim selben Betreuer
+  const conflicts = new Set();
+  const byBetreuer = {};
+  visits.filter(v => v.betreuer_id && !['abgelehnt','storniert'].includes(v.status)).forEach(v => {
+    (byBetreuer[v.betreuer_id] = byBetreuer[v.betreuer_id] || []).push(v);
+  });
+  Object.values(byBetreuer).forEach(list => {
+    list.sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    for (let i = 0; i < list.length - 1; i++) {
+      const aEnd = new Date(list[i].scheduled_at).getTime() + (list[i].duration_min || 60) * 60000;
+      if (aEnd > new Date(list[i+1].scheduled_at).getTime()) { conflicts.add(list[i].id); conflicts.add(list[i+1].id); }
+    }
+  });
+
+  const grid = document.getElementById('cal-grid');
+  const todayStr = new Date().toDateString();
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(start); day.setDate(start.getDate() + i);
+    const dayVisits = visits.filter(v => new Date(v.scheduled_at).toDateString() === day.toDateString())
+      .sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    html += `<div class="cal-day${day.toDateString() === todayStr ? ' today' : ''}">
+      <div class="cal-h">${day.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit'})}</div>
+      ${dayVisits.map(v => `
+        <div class="cal-v${conflicts.has(v.id) ? ' conflict' : ''}" style="background:${v.betreuer_id ? (colorMap[v.betreuer_id] || '#666') : '#A8B5AE'}"
+             title="${esc((v.service||'Besuch') + ' · ' + (v.patient_name||'') + ' · ' + (v.betreuer_name||'offen') + (conflicts.has(v.id) ? ' · ⚠ KONFLIKT' : ''))}">
+          ${deT(v.scheduled_at)} ${esc(v.patient_name || '')}
+          <small>${esc(v.betreuer_name || '⚠ offen')} · ${esc(v.status)}</small>
+        </div>`).join('')}
+    </div>`;
+  }
+  grid.innerHTML = html;
+  document.getElementById('cal-legend').innerHTML = CACHE.betreuer.map(b =>
+    `<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:${colorMap[b.id]}"></span>${esc(b.name)}</span>`).join('') +
+    '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;outline:2px solid var(--danger)"></span>Konflikt</span>';
+}
+
+async function loadAvailability() {
+  const el = document.getElementById('avail-list');
+  const lists = await Promise.all(CACHE.betreuer.map(b => api('/betreuer/availability?betreuer_id=' + b.id).catch(() => [])));
+  const rows = [];
+  lists.forEach((l, i) => {
+    (Array.isArray(l) ? l : []).filter(a => a.available === false).forEach(a =>
+      rows.push(`<span class="chip chip-r">${esc(CACHE.betreuer[i].name)}: ${deD(a.date)}${a.note ? ' (' + esc(a.note) + ')' : ''}</span>`));
+  });
+  el.innerHTML = rows.length ? rows.join(' ') : 'Keine Abwesenheiten eingetragen.';
+}
+
+function openVisitModal() {
+  document.getElementById('mv-conflict').style.display = 'none';
+  document.getElementById('modal-visit').classList.add('on');
+}
+
+async function createVisit() {
+  const pid = document.getElementById('mv-patient').value;
+  const bid = document.getElementById('mv-betreuer').value;
+  const date = document.getElementById('mv-date').value;
+  const time = document.getElementById('mv-time').value;
+  const dur  = parseInt(document.getElementById('mv-dur').value) || 60;
+  const svc  = document.getElementById('mv-service').value;
+  if (!pid || !date || !time) { toast('Patient, Datum und Zeit erforderlich'); return; }
+
+  // Konfliktprüfung beim gewählten Betreuer
+  if (bid) {
+    const dayVisits = await api(`/admin/visits/all?betreuer_id=${bid}&von=${date}&bis=${date}`);
+    const newStart = new Date(date + 'T' + time).getTime();
+    const newEnd = newStart + dur * 60000;
+    const conflict = (Array.isArray(dayVisits) ? dayVisits : []).find(v => {
+      if (['abgelehnt','storniert'].includes(v.status)) return false;
+      const s = new Date(v.scheduled_at).getTime();
+      const e = s + (v.duration_min || 60) * 60000;
+      return newStart < e && newEnd > s;
+    });
+    if (conflict) {
+      const c = document.getElementById('mv-conflict');
+      c.textContent = `⚠ Konflikt: ${conflict.patient_name || 'Besuch'} um ${deT(conflict.scheduled_at)} Uhr überschneidet sich. Trotzdem anlegen? Erneut klicken zum Bestätigen.`;
+      if (c.style.display !== 'block') { c.style.display = 'block'; return; }
+    }
+  }
+
+  const res = await api('/visits', {
+    method: 'POST',
+    body: { patient_id: pid, betreuer_id: bid || null, scheduled_at: date + 'T' + time + ':00',
+            duration_min: dur, service: svc, services: [svc], notes: document.getElementById('mv-notes').value }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Auftrag angelegt' + (bid ? '' : ' (offene Anfrage)'));
+  closeModal('modal-visit');
+  loadCalendar(); loadDashboard();
+}
+
+// ─── Betreuer ────────────────────────────────────────────────────────────────
+let currentBetreuerId = null;
+
+async function loadBetreuerList() {
+  const list = await api('/admin/betreuer');
+  CACHE.betreuer = Array.isArray(list) ? list : [];
+  const tb = document.getElementById('betreuer-tbody');
+  tb.innerHTML = CACHE.betreuer.map(b => `
+    <tr>
+      <td style="font-weight:700">${esc(b.name)}<div class="muted">${(b.qualifications||[]).map(esc).join(', ')}</div></td>
+      <td>${esc(b.email)}<div class="muted">${esc(b.phone || '')}</div></td>
+      <td>${eur(b.hourly_rate)}</td>
+      <td>${String(b.stunden_woche || 0).replace('.', ',')} h</td>
+      <td><div style="display:flex;align-items:center;gap:8px"><div class="bar" style="flex:1"><i style="width:${b.auslastung}%"></i></div><span style="font-size:12px;font-weight:700">${b.auslastung}%</span></div></td>
+      <td>${b.offene_besuche || 0}</td>
+      <td>${b.active === false ? '<span class="chip chip-m">Inaktiv</span>' : '<span class="chip chip-g">Aktiv</span>'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-g btn-sm" onclick="editBetreuer('${b.id}')">Bearbeiten</button>
+        <button class="btn btn-g btn-sm" onclick="showBetreuerAbrechnung('${b.id}', '${esc(b.name)}')">Abrechnung</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="8" class="muted">Keine Betreuer angelegt.</td></tr>';
+}
+
+function editBetreuer(id) {
+  const b = CACHE.betreuer.find(x => x.id === id);
+  if (!b) return;
+  document.getElementById('mb-id').value = b.id;
+  document.getElementById('mb-name').value = b.name || '';
+  document.getElementById('mb-phone').value = b.phone || '';
+  document.getElementById('mb-rate').value = parseFloat(b.hourly_rate || 0);
+  document.getElementById('mb-quali').value = (b.qualifications || []).join(', ');
+  document.getElementById('mb-iban').value = b.iban || '';
+  document.getElementById('mb-taxid').value = b.tax_id || '';
+  document.getElementById('mb-active').checked = b.active !== false;
+  document.getElementById('modal-betreuer').classList.add('on');
+}
+
+async function saveBetreuer() {
+  const id = document.getElementById('mb-id').value;
+  const res = await api('/admin/betreuer/' + id, {
+    method: 'PATCH',
+    body: {
+      name: document.getElementById('mb-name').value,
+      phone: document.getElementById('mb-phone').value,
+      hourly_rate: parseFloat(document.getElementById('mb-rate').value) || 0,
+      qualifications: document.getElementById('mb-quali').value.split(',').map(s => s.trim()).filter(Boolean),
+      iban: document.getElementById('mb-iban').value,
+      tax_id: document.getElementById('mb-taxid').value,
+      active: document.getElementById('mb-active').checked
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Gespeichert');
+  closeModal('modal-betreuer');
+  loadBetreuerList();
+}
+
+function showBetreuerAbrechnung(id, name) {
+  currentBetreuerId = id;
+  document.getElementById('babr-card').style.display = 'block';
+  document.getElementById('babr-title').textContent = 'Monatsabrechnung – ' + name;
+  loadBetreuerAbrechnung();
+  document.getElementById('babr-card').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function loadBetreuerAbrechnung() {
+  if (!currentBetreuerId) return;
+  const monat = document.getElementById('babr-monat').value;
+  const ab = await api(`/admin/buchhaltung/betreuer/${currentBetreuerId}?monat=${monat}`);
+  const el = document.getElementById('babr-body');
+  if (ab.error) { el.innerHTML = '<div class="muted">' + esc(ab.error) + '</div>'; return; }
+  el.innerHTML = `
+    <div class="kpis" style="margin-bottom:14px">
+      <div class="kpi"><div class="v">${String(ab.stunden).replace('.', ',')} h</div><div class="l">Stunden</div></div>
+      <div class="kpi"><div class="v">${eur(ab.hourly_rate)}</div><div class="l">Stundensatz</div></div>
+      <div class="kpi warn"><div class="v">${eur(ab.auszahlung)}</div><div class="l">Auszahlung</div></div>
+    </div>
+    <table><thead><tr><th>Datum</th><th>Patient</th><th>Leistung</th><th>Von–Bis</th><th>Std.</th></tr></thead><tbody>
+    ${(ab.eintraege||[]).map(e => `<tr><td>${deD(e.actual_start)}</td><td>${esc(e.patient_name||'')}</td><td>${esc(e.service||'')}</td><td>${deT(e.actual_start)}–${deT(e.actual_end)}</td><td>${String(e.stunden||0).replace('.', ',')}</td></tr>`).join('')}
+    </tbody></table>
+    <div style="margin-top:14px"><button class="btn btn-a btn-sm" onclick="genBetreuerGutschrift('${currentBetreuerId}', '${monat}')">⚡ Gutschrift für diesen Monat erstellen</button></div>`;
+}
+
+async function genBetreuerGutschrift(bid, monat) {
+  const from = monat + '-01';
+  const to = new Date(parseInt(monat.substring(0,4)), parseInt(monat.substring(5,7)), 0);
+  const res = await api('/admin/invoices/generate', {
+    method: 'POST',
+    body: { recipient_id: bid, type: 'betreuer', period_from: from, period_to: `${to.getFullYear()}-${String(to.getMonth()+1).padStart(2,'0')}-${String(to.getDate()).padStart(2,'0')}` }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Gutschrift ' + res.invoice_number + ' erstellt');
+  loadInvoices();
+}
+
+// ─── Klienten / Freibeträge ──────────────────────────────────────────────────
+let currentPatientId = null;
+
+async function loadKlienten() {
+  const pats = await api('/patients');
+  CACHE.patients = Array.isArray(pats) ? pats : [];
+  const tb = document.getElementById('klienten-tbody');
+  tb.innerHTML = CACHE.patients.map(p => {
+    const betr = CACHE.betreuer.find(b => b.id === p.betreuer_id);
+    return `<tr>
+      <td style="font-weight:700">${esc(p.name)}</td>
+      <td>${esc(p.address || '')}</td>
+      <td><span class="chip chip-b">PG ${p.pflegegrad || p.care_level || 1}</span></td>
+      <td>${esc(p.insurance || '–')}<div class="muted">${esc(p.insurance_number || '')}</div></td>
+      <td>${esc(betr?.name || '–')}</td>
+      <td><button class="btn btn-g btn-sm" onclick="showFreibetrag('${p.id}', '${esc(p.name)}')">Freibeträge</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="muted">Keine Klienten.</td></tr>';
+}
+
+function showFreibetrag(pid, name) {
+  currentPatientId = pid;
+  document.getElementById('fb-card').style.display = 'block';
+  document.getElementById('fb-title').textContent = 'Freibeträge – ' + name;
+  loadFreibetrag();
+  document.getElementById('fb-card').scrollIntoView({ behavior: 'smooth' });
+}
+
+function fbBar(label, paragraf, rest, max, used) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, rest / max * 100)) : 0;
+  return `<div style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+      <span style="font-weight:700;font-size:13px">${label} <span class="muted">${paragraf}</span></span>
+      <span style="font-weight:700;color:var(--forest)">${eur(rest)} verfügbar</span>
+    </div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="muted" style="margin-top:3px">Verbraucht: ${eur(used)} von ${eur(max)}</div>
+  </div>`;
+}
+
+async function loadFreibetrag() {
+  if (!currentPatientId) return;
+  const year = document.getElementById('fb-year').value;
+  const fb = await api(`/admin/freibetraege/${currentPatientId}/${year}`);
+  const el = document.getElementById('fb-body');
+  if (fb.error) { el.innerHTML = '<div class="muted">' + esc(fb.error) + '</div>'; return; }
+  el.innerHTML = `
+    ${fbBar('Entlastungsbetrag', '§45b SGB XI', fb.entlastungsbetrag_rest, fb.entlastungsbetrag_jahr, fb.entlastungsbetrag_used)}
+    ${fbBar('Verhinderungspflege', '§39 SGB XI', fb.verhinderungspflege_rest, fb.verhinderungspflege_budget, fb.verhinderungspflege_used)}
+    ${fbBar('Steuerermäßigung', '§35a EStG', fb.freibetrag_35a_rest, fb.freibetrag_35a_max, fb.freibetrag_35a_used)}
+    <h3 style="margin-top:8px">Budgets anpassen</h3>
+    <div class="frow">
+      <div class="fi"><label>Entlastung €/Monat</label><input type="number" step="0.01" id="fbe-entl" value="${parseFloat(fb.entlastungsbetrag)}"></div>
+      <div class="fi"><label>Verhinderungspflege €/Jahr</label><input type="number" step="0.01" id="fbe-vp" value="${parseFloat(fb.verhinderungspflege_budget)}"></div>
+      <div class="fi"><label>§35a Maximum €/Jahr</label><input type="number" step="0.01" id="fbe-35a" value="${parseFloat(fb.freibetrag_35a_max)}"></div>
+      <div class="fi"><label>Pflegegeld €/Monat (Info)</label><input type="number" step="0.01" id="fbe-pg" value="${parseFloat(fb.pflegegeld_monatlich)}"></div>
+      <button class="btn btn-f btn-sm" onclick="saveFreibetrag()">Speichern</button>
+    </div>`;
+}
+
+async function saveFreibetrag() {
+  const year = document.getElementById('fb-year').value;
+  const res = await api(`/admin/freibetraege/${currentPatientId}/${year}`, {
+    method: 'PUT',
+    body: {
+      entlastungsbetrag: parseFloat(document.getElementById('fbe-entl').value),
+      verhinderungspflege_budget: parseFloat(document.getElementById('fbe-vp').value),
+      freibetrag_35a_max: parseFloat(document.getElementById('fbe-35a').value),
+      pflegegeld_monatlich: parseFloat(document.getElementById('fbe-pg').value)
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Freibeträge aktualisiert');
+  loadFreibetrag();
+}
+
+// ─── Rechnungen ──────────────────────────────────────────────────────────────
+async function generateInvoice() {
+  const body = {
+    recipient_id: document.getElementById('gen-recipient').value,
+    type: document.getElementById('gen-type').value,
+    period_from: document.getElementById('gen-from').value,
+    period_to: document.getElementById('gen-to').value,
+    apply_entlastung: document.getElementById('gen-entl').checked,
+    apply_verhinderung: document.getElementById('gen-vp').checked
+  };
+  const res = await api('/admin/invoices/generate', { method: 'POST', body });
+  const el = document.getElementById('gen-result');
+  if (res.error) { el.innerHTML = `<div class="err" style="display:block">${esc(res.error)}</div>`; return; }
+  // Vorschau mit Freibetrags-Berechnung
+  const isK = res.type === 'kunde';
+  el.innerHTML = `
+    <div class="inv-prev">
+      <div style="font-weight:700;font-size:15px;margin-bottom:8px">✅ ${res.invoice_number} – ${esc(res.recipient_name)} <span class="chip chip-m">Entwurf</span></div>
+      <div class="row"><span>Leistungen (${res.line_items.length} Einsätze):</span><b>${eur(res.subtotal)}</b></div>
+      ${parseFloat(res.betreuungsgeld_abzug) > 0 ? `<div class="row ded"><span>− Entlastungsbetrag §45b SGB XI:</span><span>−${eur(res.betreuungsgeld_abzug)}</span></div>` : ''}
+      ${parseFloat(res.pflegegeld_abzug) > 0 ? `<div class="row ded"><span>− Verhinderungspflege §39 SGB XI:</span><span>−${eur(res.pflegegeld_abzug)}</span></div>` : ''}
+      ${isK ? `<div class="row"><span>Netto:</span><span>${eur(res.total_netto)}</span></div>
+      <div class="row"><span>MwSt ${parseFloat(res.mwst_satz).toFixed(0)}%:</span><span>${eur(res.mwst_betrag)}</span></div>` : ''}
+      <div class="row total"><span>${isK ? 'Rechnungsbetrag' : 'Auszahlungsbetrag'}:</span><span>${eur(res.total_brutto)}</span></div>
+      ${isK && parseFloat(res.freibetrag_35a) > 0 ? `<div class="hint">💡 Steuerermäßigung §35a EStG möglich: 20% von ${eur(res.total_netto)} = ${eur(res.freibetrag_35a)}</div>` : ''}
+      ${res.warnung ? `<div class="hint" style="background:var(--danger-lt);color:var(--danger)">⚠ ${esc(res.warnung)}</div>` : ''}
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <a class="btn btn-g btn-sm" href="${API}/admin/invoices/${res.id}/pdf?token=${encodeURIComponent(TOKEN)}" target="_blank">📄 PDF ansehen</a>
+        <button class="btn btn-f btn-sm" onclick="setInvStatus('${res.id}','versendet')">Als versendet markieren</button>
+      </div>
+    </div>`;
+  loadInvoices();
+}
+
+async function loadInvoices() {
+  const filter = document.getElementById('inv-filter').value;
+  const invs = await api('/admin/invoices');
+  CACHE.invoices = Array.isArray(invs) ? invs : [];
+  const list = filter ? CACHE.invoices.filter(i => i.status === filter) : CACHE.invoices;
+  const stChip = {
+    'entwurf': '<span class="chip chip-m">Entwurf</span>', 'versendet': '<span class="chip chip-b">Versendet</span>',
+    'bezahlt': '<span class="chip chip-g">Bezahlt</span>', 'überfällig': '<span class="chip chip-r">Überfällig</span>',
+    'storniert': '<span class="chip chip-m">Storniert</span>'
+  };
+  document.getElementById('inv-tbody').innerHTML = list.map(i => `
+    <tr>
+      <td style="font-weight:700">${esc(i.invoice_number)}</td>
+      <td>${i.type === 'betreuer' ? 'Gutschrift' : 'Rechnung'}</td>
+      <td>${esc(i.recipient_name || '')}</td>
+      <td class="muted">${deD(i.period_from)}–${deD(i.period_to)}</td>
+      <td>${eur(i.total_netto)}</td>
+      <td style="font-weight:700">${eur(i.total_brutto)}</td>
+      <td>${stChip[i.status] || esc(i.status)}</td>
+      <td class="muted">${deD(i.due_date)}</td>
+      <td style="white-space:nowrap">
+        <a class="plink" href="${API}/admin/invoices/${i.id}/pdf?token=${encodeURIComponent(TOKEN)}" target="_blank">PDF</a>
+        ${i.status === 'entwurf' ? ` · <a class="plink" href="#" onclick="setInvStatus('${i.id}','versendet');return false">Versenden</a>` : ''}
+        ${['versendet','überfällig'].includes(i.status) ? ` · <a class="plink" href="#" onclick="openPayment('${i.id}');return false">Zahlung</a>` : ''}
+        ${i.status !== 'storniert' && i.status !== 'bezahlt' ? ` · <a class="plink" style="color:var(--danger)" href="#" onclick="setInvStatus('${i.id}','storniert');return false">Storno</a>` : ''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="9" class="muted">Keine Rechnungen.</td></tr>';
+}
+
+async function setInvStatus(id, status) {
+  if (status === 'storniert' && !confirm('Rechnung wirklich stornieren? Abgezogene Freibeträge werden zurückgebucht.')) return;
+  const res = await api('/admin/invoices/' + id + '/status', { method: 'PATCH', body: { status } });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Status: ' + status);
+  loadInvoices(); loadDashboard();
+}
+
+function openPayment(id) {
+  const inv = CACHE.invoices.find(i => i.id === id);
+  if (!inv) return;
+  document.getElementById('mp-inv').value = id;
+  document.getElementById('mp-info').textContent = `${inv.invoice_number} – ${inv.recipient_name} – offen: ${eur(inv.total_brutto)}`;
+  document.getElementById('mp-amount').value = parseFloat(inv.total_brutto);
+  document.getElementById('mp-ref').value = inv.invoice_number;
+  document.getElementById('modal-payment').classList.add('on');
+}
+
+async function savePayment() {
+  const id = document.getElementById('mp-inv').value;
+  const res = await api('/admin/invoices/' + id + '/payment', {
+    method: 'POST',
+    body: {
+      amount: parseFloat(document.getElementById('mp-amount').value),
+      payment_date: document.getElementById('mp-date').value,
+      method: document.getElementById('mp-method').value,
+      reference: document.getElementById('mp-ref').value
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast(res.invoice_paid ? '✅ Zahlung gebucht – Rechnung bezahlt!' : '✅ Teilzahlung gebucht');
+  closeModal('modal-payment');
+  loadInvoices(); loadDashboard(); loadMonatsabschluss();
+}
+
+// ─── Buchhaltung ─────────────────────────────────────────────────────────────
+async function loadMonatsabschluss() {
+  const monat = document.getElementById('ma-monat').value;
+  if (!monat) return;
+  const m = await api('/admin/buchhaltung/monat/' + monat);
+  const el = document.getElementById('ma-body');
+  if (m.error) { el.innerHTML = '<div class="muted">' + esc(m.error) + '</div>'; return; }
+  const pos = m.ergebnis >= 0;
+  el.innerHTML = `
+    <div class="inv-prev">
+      <div class="row"><span>Einnahmen (Zahlungseingänge):</span><b style="color:var(--success)">${eur(m.einnahmen)}</b></div>
+      <div class="row"><span>− Betreuer-Honorare (bezahlt):</span><span>−${eur(m.ausgaben_betreuer)}</span></div>
+      <div class="row"><span>− Sonstige Ausgaben:</span><span>−${eur(m.ausgaben_sonstige)}</span></div>
+      <div class="row total"><span>Ergebnis:</span><span style="color:${pos ? 'var(--success)' : 'var(--danger)'}">${eur(m.ergebnis)}</span></div>
+      <div class="muted" style="margin-top:8px">Rechnungsvolumen im Monat: ${m.rechnungen_anzahl} Rechnungen / ${eur(m.rechnungen_volumen)}</div>
+    </div>`;
+}
+
+function exportCsv(format) {
+  const von = document.getElementById('exp-von').value;
+  const bis = document.getElementById('exp-bis').value;
+  window.open(`${API}/admin/buchhaltung/export/${format}?von=${von}&bis=${bis}&token=${encodeURIComponent(TOKEN)}`, '_blank');
+}
+
+async function loadCategories() {
+  const cats = await api('/admin/expense-categories');
+  document.getElementById('exp-cat').innerHTML = (Array.isArray(cats) ? cats : []).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+}
+
+async function addExpense() {
+  const res = await api('/admin/expenses', {
+    method: 'POST',
+    body: {
+      category_id: document.getElementById('exp-cat').value,
+      description: document.getElementById('exp-desc').value,
+      amount: parseFloat(document.getElementById('exp-amount').value)
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Ausgabe gebucht');
+  document.getElementById('exp-desc').value = '';
+  document.getElementById('exp-amount').value = '';
+  loadMonatsabschluss();
+}
+
+// ─── Einstellungen ───────────────────────────────────────────────────────────
+const SETTING_KEYS = ['firma_name','firma_adresse','firma_telefon','firma_email','firma_bank','firma_iban','firma_steuernummer','default_hourly_rate','mwst_satz','mwst_hinweis','zahlungsziel_tage'];
+
+async function loadSettings() {
+  const s = await api('/admin/settings');
+  if (s.error) return;
+  SETTING_KEYS.forEach(k => { const el = document.getElementById('s-' + k); if (el) el.value = s[k] || ''; });
+}
+
+async function saveSettings() {
+  const body = {};
+  SETTING_KEYS.forEach(k => { const el = document.getElementById('s-' + k); if (el) body[k] = el.value; });
+  const res = await api('/admin/settings', { method: 'PUT', body });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Einstellungen gespeichert');
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+if (TOKEN && USER && USER.role === 'admin') showApp();
+</script>
+</body>
+</html>

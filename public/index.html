@@ -424,7 +424,8 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         <div class="qab" onclick="goTo('sc-book')"><div class="qa-ico" style="background:var(--forest-lt)">📅</div><div><div class="qa-lbl">Termin buchen</div><div class="qa-sub">Neuen Besuch anfragen</div></div></div>
         <div class="qab" onclick="goTo('sc-chat')"><div class="qa-ico" style="background:var(--amber-lt)">💬</div><div><div class="qa-lbl">Nachricht</div><div class="qa-sub">An Betreuerin schreiben</div></div></div>
         <div class="qab" onclick="goTo('sc-rep')"><div class="qa-ico" style="background:var(--info-lt)">📋</div><div><div class="qa-lbl">Berichte</div><div class="qa-sub">Letzte Besuchsberichte</div></div></div>
-        <div class="qab" onclick="toast('Notfall: +49 30 1234567')"><div class="qa-ico" style="background:var(--danger-lt)">🚨</div><div><div class="qa-lbl">Notfall</div><div class="qa-sub">Sofort-Kontakt</div></div></div>
+        <div class="qab" onclick="goTo('sc-fin')"><div class="qa-ico" style="background:var(--success-lt)">💶</div><div><div class="qa-lbl">Rechnungen</div><div class="qa-sub">Budget &amp; Zahlungen</div></div></div>
+        <div class="qab" onclick="toast('Notfall: +49 30 1234567')" style="grid-column:span 2;flex-direction:row;align-items:center"><div class="qa-ico" style="background:var(--danger-lt)">🚨</div><div><div class="qa-lbl">Notfall</div><div class="qa-sub">Sofort-Kontakt</div></div></div>
       </div>
 
       <!-- Upcoming visits -->
@@ -500,13 +501,7 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
       </div>
       <div class="bbody" id="bs2" style="display:none">
         <div class="bst">Wann?</div>
-        <div class="dscroll">
-          <div class="dchip sel" onclick="pd(this,'Mo, 09.06.')"><div class="dc-day">Mo</div><div class="dc-num">09</div></div>
-          <div class="dchip" onclick="pd(this,'Di, 10.06.')"><div class="dc-day">Di</div><div class="dc-num">10</div></div>
-          <div class="dchip" onclick="pd(this,'Mi, 11.06.')"><div class="dc-day">Mi</div><div class="dc-num">11</div></div>
-          <div class="dchip" onclick="pd(this,'Do, 12.06.')"><div class="dc-day">Do</div><div class="dc-num">12</div></div>
-          <div class="dchip" onclick="pd(this,'Fr, 13.06.')"><div class="dc-day">Fr</div><div class="dc-num">13</div></div>
-        </div>
+        <div class="dscroll" id="date-scroll"></div>
         <div style="font-size:13px;font-weight:700;color:var(--text);margin:8px 0 10px">Freie Zeiten</div>
         <div class="slotsg">
           <div class="slot" onclick="psl(this,'08:00')">08:00</div>
@@ -559,6 +554,22 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         <button class="sendb" onclick="sendMsg()">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cream-lt)" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
+      </div>
+    </div>
+
+    <!-- ── FINANZEN (Angehörige) ── -->
+    <div class="sc" id="sc-fin">
+      <div class="rhdr">
+        <h2>Rechnungen &amp; Budget</h2>
+        <p>Freibeträge, Rechnungen und Zahlungen</p>
+      </div>
+      <div class="stl">Verfügbare Budgets <span id="fin-year" style="text-transform:none"></span></div>
+      <div id="fin-budgets" style="padding:0 16px">
+        <div style="padding:12px 6px;font-size:13px;color:var(--muted)">Wird geladen …</div>
+      </div>
+      <div class="stl">Meine Rechnungen</div>
+      <div id="fin-invoices" style="padding:0 16px 20px">
+        <div style="padding:12px 6px;font-size:13px;color:var(--muted)">Wird geladen …</div>
       </div>
     </div>
 
@@ -643,6 +654,13 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
       <div class="az-total">
         <div><div style="font-size:13px;color:var(--muted)">Diese Woche</div><div class="az-h" id="az-week-h" style="font-size:28px">0,0 Std.</div></div>
         <div style="text-align:right"><div style="font-size:13px;color:var(--muted)">Dieser Monat</div><div class="az-h" id="az-month-h" style="font-size:28px">0,0 Std.</div></div>
+      </div>
+      <div class="az-total" style="margin-top:0;background:var(--amber-lt);border-color:rgba(196,123,58,.3)">
+        <div>
+          <div style="font-size:13px;color:var(--muted)">Monatsabrechnung <span id="ab-monat"></span></div>
+          <div class="az-h" id="ab-betrag" style="font-size:28px;color:var(--amber-dk)">–</div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:var(--muted)" id="ab-detail"></div>
       </div>
       <div class="stl">Letzte Einträge</div>
       <div id="az-list"><div style="padding:16px 22px;font-size:13px;color:var(--muted)">Noch keine Zeiten erfasst.</div></div>
@@ -735,6 +753,17 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
     </button>
   </nav>
 
+  <!-- Pflicht-Besuchsbericht vor dem Ausstempeln -->
+  <div id="modal-bericht" style="display:none;position:absolute;inset:0;background:rgba(26,42,30,.5);z-index:300;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(2px)">
+    <div style="background:var(--cream-lt);border-radius:var(--r-xl);padding:22px;width:100%;box-shadow:var(--s-lg)">
+      <div style="font-family:var(--f-serif);font-size:21px;font-weight:600;color:var(--text)">Besuchsbericht</div>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 14px">Pflichtfeld – bitte vor dem Ausstempeln ausfüllen.</div>
+      <textarea id="mb-txt" rows="5" placeholder="Was wurde gemacht? Wie war die Stimmung? Besonderheiten?" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:14px;font-family:var(--f-sans);color:var(--text);background:var(--cream);outline:none;resize:vertical;line-height:1.6"></textarea>
+      <button class="btn btn-f" style="margin-top:12px" onclick="submitClockoutBericht()">Speichern &amp; Ausstempeln ✓</button>
+      <button onclick="document.getElementById('modal-bericht').style.display='none'" style="width:100%;margin-top:8px;background:none;border:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;padding:8px">Abbrechen</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast-el"></div>
 </div>
 
@@ -747,9 +776,10 @@ let ws    = null;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
+  initBookDates();
   setTimeout(() => {
     document.getElementById('loading').classList.add('hide');
-    if (TOKEN && USER) { showApp(); loadAll(); }
+    if (TOKEN && USER) { showApp(); if (USER.role !== 'betreuer') loadAll(); }
   }, 1200);
 });
 
@@ -772,6 +802,7 @@ function goTo(id) {
   const nb = navMap[id];
   if (nb) { const el = document.getElementById(nb); if (el) el.classList.add('active'); }
   if (id === 'sc-chat') { const d = document.getElementById('chat-dot'); if (d) d.style.display = 'none'; }
+  if (id === 'sc-fin') loadFinanzen();
   // Betreuer-Seiten initialisieren
   if (id === 'sc-bchat') loadBetreuerMessages();
   if (id === 'sc-brep')  { initBericht(); loadBetreuerBerichte(); }
@@ -792,7 +823,7 @@ function goTo(id) {
       sel.style.display = 'block'; card.style.display = 'none';
       sel.innerHTML = offen.map(v => {
         const d = new Date(v.scheduled_at);
-        return `<div class="auftr-card" onclick="loadStempelForVisit(${v.id})" style="cursor:pointer">
+        return `<div class="auftr-card" onclick="loadStempelForVisit('${v.id}')" style="cursor:pointer">
           <div style="font-weight:700;font-size:14px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px">${v.patient_name||'Patient'} · ${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</div>
         </div>`;
@@ -868,46 +899,79 @@ function showBetreuerApp() {
   if (el) el.textContent = h < 12 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend';
   const nm = document.getElementById('bh-name');
   if (nm) nm.textContent = USER?.name || 'Betreuer';
+  initBetreuerChat();
   loadBetreuerHome();
   loadAuftraege();
   loadArbeitszeiten();
 }
 
+// Betreuer-Chat: Raum des ersten eigenen Patienten beitreten
+async function initBetreuerChat() {
+  const patients = await api('/patients');
+  if (Array.isArray(patients) && patients.length) {
+    joinChatRoom('patient_' + patients[0].id);
+    const nameEl = document.getElementById('bchat-name');
+    if (nameEl) nameEl.textContent = 'Familie ' + (patients[0].name?.split(' ').pop() || '');
+  }
+}
+
 // ─── WebSocket ────────────────────────────────────────────────────────────────
+let CHAT_ROOM = 'visit_v1';
+let wsAuthed = false;
+
+function joinChatRoom(room) {
+  CHAT_ROOM = room;
+  if (ws && ws.readyState === WebSocket.OPEN && wsAuthed) {
+    ws.send(JSON.stringify({ type: 'join', roomId: CHAT_ROOM }));
+  }
+}
+
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
+  wsAuthed = false;
   ws.onopen  = () => ws.send(JSON.stringify({ type: 'auth', token: TOKEN }));
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
+    if (msg.type === 'auth_ok') {
+      wsAuthed = true;
+      ws.send(JSON.stringify({ type: 'join', roomId: CHAT_ROOM }));
+      return;
+    }
+    if (msg.type === 'auth_error') { wsAuthed = false; return; }
     if (msg.type === 'chat') {
-      if (USER?.role === 'betreuer') appendBMsg(msg);
-      else appendMsg(msg);
+      const m = msg.message || msg;
+      if (m.sender_id === USER?.id) return; // eigene Nachricht wurde schon lokal angezeigt
+      if (USER?.role === 'betreuer') appendBMsg(m);
+      else appendMsg(m);
     }
     if (msg.type === 'visit_update') {
       if (USER?.role === 'betreuer') { loadBetreuerHome(); loadAuftraege(); }
       else loadVisits();
     }
-    if (msg.type === 'new_assignment') { loadBetreuerHome(); loadAuftraege(); toast('📋 Neuer Auftrag eingegangen!'); showAnfragenBadge(); }
-    if (msg.type === 'new_report') { loadReports(); toast('📋 Neuer Besuchsbericht verfügbar'); }
+    if (msg.type === 'new_assignment') { loadBetreuerHome(); loadAuftraege(); toast('📋 Neuer Auftrag eingegangen!'); showAnfragenBadge(1); }
+    if (msg.type === 'new_report') { if (USER?.role !== 'betreuer') { loadReports(); toast('📋 Neuer Besuchsbericht verfügbar'); } }
   };
-  ws.onclose = () => setTimeout(connectWS, 3000);
+  // Nur neu verbinden, wenn noch ein gültiger Login vorliegt (Token-Check vor Reconnect)
+  ws.onclose = () => { if (TOKEN && USER) setTimeout(connectWS, 3000); };
 }
 
 // ─── Load data ────────────────────────────────────────────────────────────────
 async function loadAll() {
-  await Promise.all([loadPatient(), loadVisits(), loadReports(), loadMessages()]);
+  await loadPatient(); // setzt CHAT_ROOM, daher zuerst
+  await Promise.all([loadVisits(), loadReports(), loadMessages(), loadFinanzen()]);
 }
 
 async function loadPatient() {
   const patients = await api('/patients');
-  if (!patients.length) return;
+  if (!Array.isArray(patients) || !patients.length) return;
   const p = patients[0];
+  joinChatRoom('patient_' + p.id);
   const badge = document.getElementById('pbadge');
   badge.style.display = 'flex';
   document.getElementById('pat-av').textContent  = p.name[0];
   document.getElementById('pat-name').textContent = p.name;
-  document.getElementById('pat-sub').textContent  = `Ihr Angehöriger · Pflegegrad ${p.pflegegrad} · ${p.address?.split(',')[1]?.trim() || 'Berlin'}`;
+  document.getElementById('pat-sub').textContent  = `Ihr Angehöriger · Pflegegrad ${p.pflegegrad || p.care_level || 1} · ${p.address?.split(',')[1]?.trim() || ''}`;
   document.getElementById('sv-pat').textContent   = p.name;
 }
 
@@ -934,7 +998,13 @@ async function loadVisits() {
     const date = d.toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit'});
     const chip = v.status === 'unterwegs' ? '<span class="chip chip-f">Heute</span>'
                : v.status === 'abgeschlossen' ? '<span class="chip chip-g">Fertig</span>'
+               : v.status === 'anfrage' ? '<span class="chip chip-a">Angefragt</span>'
+               : v.status === 'abgelehnt' ? '<span class="chip" style="background:var(--danger-lt);color:var(--danger)">Abgelehnt</span>'
                : '<span class="chip chip-b">Geplant</span>';
+    // Bewertung: nach abgeschlossenem Besuch Sterne anzeigen
+    const stars = v.status === 'abgeschlossen' && !v.rating
+      ? `<div style="margin-top:5px">${[1,2,3,4,5].map(n=>`<span onclick="rateVisit('${v.id}',${n})" style="cursor:pointer;font-size:17px;color:var(--amber)">☆</span>`).join('')} <span style="font-size:10px;color:var(--muted)">Bewerten</span></div>`
+      : v.rating ? `<div style="margin-top:3px;font-size:12px;color:var(--amber)">${'★'.repeat(v.rating)}${'☆'.repeat(5-v.rating)}</div>` : '';
     list.innerHTML += `
       <div class="wi">
         <div class="db" style="background:${colors[i%colors.length]};color:var(--cream-lt)">
@@ -942,7 +1012,8 @@ async function loadVisits() {
         </div>
         <div style="flex:1">
           <div class="wi-t">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
-          <div class="wi-s">${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} · ${v.betreuer_name||'–'} · ${v.duration_min} Min.</div>
+          <div class="wi-s">${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} · ${v.betreuer_name||'–'} · ${v.duration_min || v.duration || 60} Min.</div>
+          ${stars}
         </div>
         ${chip}
       </div>`;
@@ -984,11 +1055,94 @@ async function loadReports() {
 }
 
 async function loadMessages() {
-  const msgs = await api('/messages/visit_v1');
+  const msgs = await api('/messages/' + CHAT_ROOM);
   const box = document.getElementById('cmsgs');
-  // Keep system message, add history
-  msgs.forEach(m => appendMsg(m, false));
+  box.innerHTML = '<div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>';
+  if (Array.isArray(msgs)) msgs.forEach(m => appendMsg(m, false));
   box.scrollTop = box.scrollHeight;
+}
+
+// ─── Finanzen: Freibeträge + Rechnungen (Angehörige) ─────────────────────────
+const eurF = (n) => (parseFloat(n||0)||0).toFixed(2).replace('.',',') + ' €';
+
+function budgetBar(label, rest, max, hint) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, rest / max * 100)) : 0;
+  return `<div class="card" style="padding:14px 16px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-size:13px;font-weight:700;color:var(--text)">${label}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--forest);font-family:var(--f-serif)">${eurF(rest)}</div>
+    </div>
+    <div class="prog-t" style="margin-top:8px"><div class="prog-f" style="width:${pct}%"></div></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:5px">${hint}</div>
+  </div>`;
+}
+
+async function loadFinanzen() {
+  const year = new Date().getFullYear();
+  const yEl = document.getElementById('fin-year');
+  if (yEl) yEl.textContent = '· ' + year;
+
+  // Freibeträge des ersten Patienten
+  const bEl = document.getElementById('fin-budgets');
+  try {
+    const patients = await api('/patients');
+    if (Array.isArray(patients) && patients.length) {
+      const fb = await api(`/freibetraege/${patients[0].id}/${year}`);
+      if (fb && !fb.error) {
+        bEl.innerHTML =
+          budgetBar('Entlastungsbetrag §45b SGB XI', fb.entlastungsbetrag_rest, fb.entlastungsbetrag_jahr,
+            `Noch ${eurF(fb.entlastungsbetrag_rest)} von ${eurF(fb.entlastungsbetrag_jahr)} verfügbar (${eurF(fb.entlastungsbetrag)}/Monat)`) +
+          budgetBar('Verhinderungspflege §39 SGB XI', fb.verhinderungspflege_rest, fb.verhinderungspflege_budget,
+            `Jahresbudget ${eurF(fb.verhinderungspflege_budget)} (Pflegegrad 2-5)`) +
+          budgetBar('Steuerermäßigung §35a EStG', fb.freibetrag_35a_rest, fb.freibetrag_35a_max,
+            '20% der Rechnungsbeträge steuerlich absetzbar') +
+          (parseFloat(fb.pflegegeld_monatlich) > 0 ? `<div style="font-size:12px;color:var(--muted);padding:0 4px 8px">ℹ️ Pflegegeld: ${eurF(fb.pflegegeld_monatlich)}/Monat (direkt von der Pflegekasse)</div>` : '');
+      } else {
+        bEl.innerHTML = '<div style="padding:12px 6px;font-size:13px;color:var(--muted)">Keine Budgetdaten verfügbar.</div>';
+      }
+    } else {
+      bEl.innerHTML = '<div style="padding:12px 6px;font-size:13px;color:var(--muted)">Kein Patient hinterlegt.</div>';
+    }
+  } catch { bEl.innerHTML = '<div style="padding:12px 6px;font-size:13px;color:var(--muted)">Fehler beim Laden.</div>'; }
+
+  // Rechnungen + Zahlungshistorie
+  const iEl = document.getElementById('fin-invoices');
+  const invs = await api('/invoices');
+  if (!Array.isArray(invs) || !invs.length) {
+    iEl.innerHTML = '<div style="padding:12px 6px;font-size:13px;color:var(--muted)">Noch keine Rechnungen vorhanden.</div>';
+    return;
+  }
+  const stChip = {
+    'entwurf':   '<span class="chip" style="background:var(--cream-dk);color:var(--muted)">Entwurf</span>',
+    'versendet': '<span class="chip chip-b">Offen</span>',
+    'bezahlt':   '<span class="chip chip-g">Bezahlt</span>',
+    'überfällig':'<span class="chip" style="background:var(--danger-lt);color:var(--danger)">Überfällig</span>',
+    'storniert': '<span class="chip" style="background:var(--cream-dk);color:var(--muted)">Storniert</span>'
+  };
+  iEl.innerHTML = invs.map(inv => `
+    <div class="card" style="padding:14px 16px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--text)">${inv.invoice_number}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${new Date(inv.period_from).toLocaleDateString('de-DE')} – ${new Date(inv.period_to).toLocaleDateString('de-DE')}</div>
+          ${inv.paid_at ? `<div style="font-size:11px;color:var(--success);margin-top:2px">✓ Bezahlt am ${new Date(inv.paid_at).toLocaleDateString('de-DE')}</div>` : (inv.due_date ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Fällig: ${new Date(inv.due_date).toLocaleDateString('de-DE')}</div>` : '')}
+        </div>
+        <div style="text-align:right">
+          ${stChip[inv.status] || ''}
+          <div style="font-family:var(--f-serif);font-size:19px;font-weight:600;color:var(--forest);margin-top:5px">${eurF(inv.total_brutto)}</div>
+        </div>
+      </div>
+      ${parseFloat(inv.total_abzuege) > 0 ? `<div style="font-size:11px;color:var(--success);margin-top:6px">− ${eurF(inv.total_abzuege)} Freibeträge bereits abgezogen</div>` : ''}
+      ${parseFloat(inv.freibetrag_35a) > 0 ? `<div style="font-size:11px;color:var(--warn);margin-top:2px">§35a EStG: ${eurF(inv.freibetrag_35a)} steuerlich absetzbar</div>` : ''}
+      <a href="${API}/invoices/${inv.id}/pdf?token=${encodeURIComponent(TOKEN)}" target="_blank" style="display:block;text-align:center;margin-top:10px;padding:9px;background:var(--forest-lt);border-radius:var(--r-md);color:var(--forest);font-size:12px;font-weight:700;text-decoration:none">📄 PDF herunterladen</a>
+    </div>`).join('');
+}
+
+async function rateVisit(id, stars) {
+  const res = await api('/visits/' + id + '/rating', { method: 'POST', body: { rating: stars } });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('⭐ Danke für Ihre Bewertung!');
+  loadVisits();
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -1014,40 +1168,46 @@ function appendMsg(m, scroll = true) {
 async function sendMsg() {
   const inp = document.getElementById('cinp');
   const txt = inp.value.trim();
-  if (!txt || !ws || ws.readyState !== WebSocket.OPEN) {
-    // Fallback: lokale Demo
-    const box = document.getElementById('cmsgs');
-    const ts  = new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-    const d1  = document.createElement('div');
-    d1.className='msg out fu';
-    d1.innerHTML=`<div class="bub">${txt}</div><div class="mts">${ts}</div>`;
-    box.appendChild(d1); inp.value=''; box.scrollTop=box.scrollHeight;
-    setTimeout(() => {
-      const d2=document.createElement('div');
-      d2.className='msg in fu';
-      d2.innerHTML=`<div class="bub">${demoReplies[Math.floor(Math.random()*demoReplies.length)]}</div><div class="mts">${ts}</div>`;
-      box.appendChild(d2); box.scrollTop=box.scrollHeight;
-    },1400);
-    return;
-  }
-  ws.send(JSON.stringify({ type:'chat', room_id:'visit_v1', content: txt }));
+  if (!txt) return;
+  appendMsg({ sender_id: USER?.id, content: txt, created_at: new Date().toISOString() });
   inp.value = '';
+  if (ws && ws.readyState === WebSocket.OPEN && wsAuthed) {
+    ws.send(JSON.stringify({ type:'chat', room_id: CHAT_ROOM, content: txt }));
+  } else {
+    toast('Offline – Nachricht wird nicht zugestellt');
+  }
 }
 
 // ─── Booking ──────────────────────────────────────────────────────────────────
-let bk = { svc:'', dt:'', date:'Mo, 09.06.' };
-function ps(el, svc) {
+let bk = { svc:'', dur:60, time:'', iso:'', label:'' };
+
+// Echte Datums-Chips für die nächsten 7 Tage generieren
+function initBookDates() {
+  const el = document.getElementById('date-scroll');
+  if (!el) return;
+  const days = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const label = d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'});
+    html += `<div class="dchip${i===0?' sel':''}" data-iso="${iso}" data-label="${label}" onclick="pd(this)"><div class="dc-day">${days[d.getDay()]}</div><div class="dc-num">${String(d.getDate()).padStart(2,'0')}</div></div>`;
+    if (i === 0) { bk.iso = iso; bk.label = label; }
+  }
+  el.innerHTML = html;
+}
+function ps(el, svc, dur) {
   document.querySelectorAll('.scard').forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel'); bk.svc = svc;
+  el.classList.add('sel'); bk.svc = svc; bk.dur = parseInt(dur) || 60;
   setTimeout(()=>gbStep(2), 280);
 }
-function pd(el, d) {
+function pd(el) {
   document.querySelectorAll('.dchip').forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel'); bk.date = d; updSum();
+  el.classList.add('sel'); bk.iso = el.dataset.iso; bk.label = el.dataset.label; updSum();
 }
 function psl(el, t) {
   document.querySelectorAll('.slot:not(.gone)').forEach(s=>s.classList.remove('sel'));
-  el.classList.add('sel'); bk.dt = bk.date + ' · ' + t;
+  el.classList.add('sel'); bk.time = t;
   setTimeout(()=>gbStep(3), 280);
 }
 function gbStep(n) {
@@ -1059,24 +1219,23 @@ function gbStep(n) {
 }
 function updSum() {
   const s=document.getElementById('sv-svc'); const t=document.getElementById('sv-dt');
-  if(s) s.textContent=bk.svc||'–'; if(t) t.textContent=bk.dt||'–';
+  if(s) s.textContent=bk.svc||'–';
+  if(t) t.textContent=(bk.label && bk.time) ? bk.label + ' · ' + bk.time : '–';
 }
 async function doBook() {
+  if (!bk.svc || !bk.iso || !bk.time) { toast('Bitte Leistung, Datum und Zeit wählen'); return; }
   const patients = await api('/patients');
   if (!patients.length) { toast('Kein Patient gefunden'); return; }
 
-  // Parse date/time
-  const parts = bk.dt.split(' · ');
-  const today = new Date().toISOString().split('T')[0];
-  const timeStr = parts[1] || '10:00';
-  const scheduled_at = `${today}T${timeStr}:00`;
+  const scheduled_at = `${bk.iso}T${bk.time}:00`;
+  const svcName = bk.svc.split(' ').slice(1).join(' ') || bk.svc; // Emoji entfernen
 
   const res = await api('/visits', {
     method: 'POST',
-    body: { patient_id: patients[0].id, service: bk.svc, scheduled_at, duration_min: 60 }
+    body: { patient_id: patients[0].id, service: svcName, services: [svcName], scheduled_at, duration_min: bk.dur }
   });
   if (res.error) { toast('Fehler: ' + res.error); return; }
-  toast('✅ Gebucht! Bestätigung wird gesendet.');
+  toast('✅ Anfrage gesendet! Wird vom Betreuer bestätigt.');
   setTimeout(()=>{ gbStep(1); goTo('sc-home'); loadVisits(); }, 1800);
 }
 
@@ -1197,7 +1356,7 @@ function renderAuftrCard(v, mode) {
   }[v.status] || '';
 
   if (mode === 'mini') {
-    return `<div class="auftr-card" onclick="openStempel(${v.id})" style="cursor:pointer">
+    return `<div class="auftr-card" onclick="openStempel('${v.id}')" style="cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div>
           <div style="font-weight:700;font-size:14px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
@@ -1213,8 +1372,8 @@ function renderAuftrCard(v, mode) {
       <div style="font-weight:700;font-size:15px;margin-bottom:4px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${pat} · ${date} · ${time} Uhr · ${v.duration_min || 60} Min.</div>
       <div style="display:flex;gap:10px">
-        <button onclick="doAccept(${v.id})" class="btn btn-f" style="flex:1;padding:12px">✓ Annehmen</button>
-        <button onclick="doDecline(${v.id})" style="flex:1;background:var(--cream-dk);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:12px;font-size:14px;font-weight:600;cursor:pointer;color:var(--muted)">✕ Ablehnen</button>
+        <button onclick="doAccept('${v.id}')" class="btn btn-f" style="flex:1;padding:12px">✓ Annehmen</button>
+        <button onclick="doDecline('${v.id}')" style="flex:1;background:var(--cream-dk);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:12px;font-size:14px;font-weight:600;cursor:pointer;color:var(--muted)">✕ Ablehnen</button>
       </div>
     </div>`;
   }
@@ -1223,24 +1382,34 @@ function renderAuftrCard(v, mode) {
   const canClockin = ['geplant','bestätigt'].includes(v.status);
   const canClockout = v.status === 'unterwegs' && v.actual_start && !v.actual_end;
   const stempelBtn = canClockin
-    ? `<button onclick="doClockIn(${v.id})" class="btn btn-f" style="padding:10px;font-size:13px">▶ Einstempeln</button>`
+    ? `<button onclick="doClockIn('${v.id}')" class="btn btn-f" style="padding:10px;font-size:13px">▶ Einstempeln</button>`
     : canClockout
-    ? `<button onclick="doClockOut(${v.id})" style="background:var(--error-lt,#fff0f0);border:1.5px solid rgba(200,50,50,.3);color:var(--error,#c00);border-radius:var(--r-lg);padding:10px;font-size:13px;font-weight:700;cursor:pointer;width:100%">■ Ausstempeln</button>`
+    ? `<button onclick="doClockOut('${v.id}')" style="background:var(--error-lt,#fff0f0);border:1.5px solid rgba(200,50,50,.3);color:var(--error,#c00);border-radius:var(--r-lg);padding:10px;font-size:13px;font-weight:700;cursor:pointer;width:100%">■ Ausstempeln</button>`
     : '';
+
+  // Auftragsdetail: Adresse, Anfahrt, Pflegegrad, Besonderheiten
+  const addr = v.address || v.patient_address || '';
+  const detail = `
+    ${addr ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:8px">
+      <span>📍 ${addr}</span>
+      <a href="https://www.google.com/maps?q=${encodeURIComponent(addr)}" target="_blank" style="margin-left:auto;flex-shrink:0;background:var(--forest-lt);color:var(--forest);border-radius:var(--r-full);padding:4px 10px;font-size:11px;font-weight:700;text-decoration:none">🗺 Anfahrt</a>
+    </div>` : ''}
+    ${v.patient_notes ? `<div style="font-size:11px;color:var(--warn);background:var(--warn-lt);border-radius:var(--r-sm);padding:6px 10px;margin-bottom:8px">⚠️ ${v.patient_notes}</div>` : ''}`;
 
   return `<div class="auftr-card">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
       <div>
         <div style="font-weight:700;font-size:15px">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">${pat}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">${pat}${v.pflegegrad ? ' · Pflegegrad ' + v.pflegegrad : ''}</div>
       </div>
       ${statusChip}
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       <span class="chip chip-b" style="background:var(--cream-dk)">${date}</span>
       <span class="chip chip-b" style="background:var(--cream-dk)">${time} Uhr</span>
       <span class="chip chip-b" style="background:var(--cream-dk)">${v.duration_min || 60} Min.</span>
     </div>
+    ${detail}
     ${stempelBtn}
   </div>`;
 }
@@ -1345,8 +1514,21 @@ async function doStempel() {
   }
 }
 
+// Optionaler GPS-Zeitstempel (max. 3s warten, sonst ohne)
+function getGPS() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p => resolve(p.coords.latitude.toFixed(5) + ',' + p.coords.longitude.toFixed(5)),
+      () => resolve(null),
+      { timeout: 3000, maximumAge: 60000 }
+    );
+  });
+}
+
 async function doClockIn(id) {
-  const res = await api('/visits/' + id + '/clockin', { method: 'PATCH' });
+  const gps = await getGPS();
+  const res = await api('/visits/' + id + '/clockin', { method: 'PATCH', body: { gps } });
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Eingestempelt!');
   stempelStart = new Date(res.actual_start);
@@ -1354,11 +1536,37 @@ async function doClockIn(id) {
   const btn = document.getElementById('stempel-btn');
   if (btn) { btn.textContent = '■ Ausstempeln'; btn.className = 'stempel-btn aus'; }
   bAktiverBesuch = res;
-  loadBetreuerHome();
+  loadBetreuerHome(); loadAuftraege();
 }
 
+// Ausstempeln: erst Pflichtbericht, dann Stempel
+let pendingClockout = null;
+
 async function doClockOut(id) {
-  const res = await api('/visits/' + id + '/clockout', { method: 'PATCH' });
+  const visits = await api('/betreuer/visits');
+  pendingClockout = (Array.isArray(visits) ? visits.find(x => x.id === id) : null) || { id };
+  document.getElementById('mb-txt').value = '';
+  document.getElementById('modal-bericht').style.display = 'flex';
+}
+
+async function submitClockoutBericht() {
+  const txt = document.getElementById('mb-txt').value.trim();
+  if (!txt) { toast('Bitte Bericht ausfüllen – Pflichtfeld.'); return; }
+  if (!pendingClockout) return;
+  if (pendingClockout.patient_id) {
+    await api('/reports', {
+      method: 'POST',
+      body: { patient_id: pendingClockout.patient_id, visit_id: pendingClockout.id, content: txt, mood: bRepMood || 3, tasks_done: pendingClockout.services || [] }
+    });
+  }
+  document.getElementById('modal-bericht').style.display = 'none';
+  await reallyClockOut(pendingClockout.id);
+  pendingClockout = null;
+}
+
+async function reallyClockOut(id) {
+  const gps = await getGPS();
+  const res = await api('/visits/' + id + '/clockout', { method: 'PATCH', body: { gps } });
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Ausgestempelt! ' + (res.stunden ? res.stunden + ' Std. erfasst.' : ''));
   stopStempelTimer();
@@ -1366,10 +1574,12 @@ async function doClockOut(id) {
   bAktiverBesuch = null;
   const btn = document.getElementById('stempel-btn');
   if (btn) { btn.textContent = '✓ Abgeschlossen'; btn.disabled = true; }
-  const diff = new Date(res.actual_end) - new Date(res.actual_start);
-  const el = document.getElementById('stempel-timer');
-  if (el) el.textContent = fmtDuration(diff);
-  loadBetreuerHome(); loadArbeitszeiten();
+  if (res.actual_start && res.actual_end) {
+    const diff = new Date(res.actual_end) - new Date(res.actual_start);
+    const el = document.getElementById('stempel-timer');
+    if (el) el.textContent = fmtDuration(diff);
+  }
+  loadBetreuerHome(); loadAuftraege(); loadArbeitszeiten();
 }
 
 function loadStempelHeute(visits) {
@@ -1397,6 +1607,17 @@ function loadStempelHeute(visits) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function loadArbeitszeiten() {
+  // Monatsabrechnung: eigene Stunden × Stundensatz
+  api('/betreuer/abrechnung').then(ab => {
+    if (!ab || ab.error) return;
+    const mEl = document.getElementById('ab-monat');
+    const bEl = document.getElementById('ab-betrag');
+    const dEl = document.getElementById('ab-detail');
+    if (mEl) mEl.textContent = '· ' + (ab.monat || '');
+    if (bEl) bEl.textContent = eurF(ab.auszahlung);
+    if (dEl) dEl.innerHTML = `${String(ab.stunden).replace('.',',')} Std. × ${eurF(ab.hourly_rate)}<br>Auszahlung`;
+  }).catch(()=>{});
+
   const rows = await api('/betreuer/arbeitszeiten');
   if (!Array.isArray(rows)) return;
 
@@ -1446,10 +1667,11 @@ async function loadArbeitszeiten() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function loadBetreuerMessages() {
-  const msgs = await api('/messages/visit_v1');
+  const msgs = await api('/messages/' + CHAT_ROOM);
   const box = document.getElementById('bcmsgs');
   if (!box) return;
-  msgs.forEach(m => appendBMsg(m, false));
+  box.innerHTML = '<div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>';
+  if (Array.isArray(msgs)) msgs.forEach(m => appendBMsg(m, false));
   box.scrollTop = box.scrollHeight;
 }
 
@@ -1470,23 +1692,12 @@ async function sendBMsg() {
   if (!inp) return;
   const txt = inp.value.trim();
   if (!txt) return;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type:'chat', room_id:'visit_v1', content: txt }));
-    inp.value = '';
+  appendBMsg({ sender_id: USER?.id, content: txt, created_at: new Date().toISOString() });
+  inp.value = '';
+  if (ws && ws.readyState === WebSocket.OPEN && wsAuthed) {
+    ws.send(JSON.stringify({ type:'chat', room_id: CHAT_ROOM, content: txt }));
   } else {
-    // Demo-Fallback
-    const box = document.getElementById('bcmsgs');
-    const ts  = new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-    const d1  = document.createElement('div');
-    d1.className='msg out fu';
-    d1.innerHTML=`<div class="bub">${txt}</div><div class="mts">${ts}</div>`;
-    box.appendChild(d1); inp.value=''; box.scrollTop=box.scrollHeight;
-    setTimeout(() => {
-      const d2=document.createElement('div');
-      d2.className='msg in fu';
-      d2.innerHTML=`<div class="bub">${demoReplies[Math.floor(Math.random()*demoReplies.length)]}</div><div class="mts">${ts}</div>`;
-      box.appendChild(d2); box.scrollTop=box.scrollHeight;
-    },1400);
+    toast('Offline – Nachricht wird nicht zugestellt');
   }
 }
 
@@ -1553,4 +1764,17 @@ setInterval(()=>{
   if(eta===0) toast('🔔 Maria K. ist angekommen!');
 },9000);
 setInterval(()=>{
-  const pin=
+  const pin=document.getElementById('cpin'); if(!pin)return;
+  mx=Math.min(250,mx+(Math.random()*5+1)); my=Math.max(62,my-(Math.random()*4+1));
+  pin.style.left=mx+'px'; pin.style.top=my+'px';
+},3500);
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
