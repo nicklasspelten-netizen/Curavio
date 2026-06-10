@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Curavio">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- DSGVO: keine externen Fonts/Tracker – Systemschriften -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -28,8 +28,8 @@
   --s-sm:0 2px 10px rgba(28,58,42,.08);
   --s-md:0 6px 24px rgba(28,58,42,.12);
   --s-lg:0 16px 48px rgba(28,58,42,.18);
-  --f-serif:'Cormorant Garant',Georgia,serif;
-  --f-sans:'DM Sans',system-ui,sans-serif;
+  --f-serif:'Palatino Linotype','Book Antiqua',Palatino,Georgia,serif;
+  --f-sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA);
   display:flex;justify-content:center;align-items:center;min-height:100vh;overflow:hidden;}
@@ -360,6 +360,7 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         <div class="fi"><label>Passwort</label><input type="password" id="li-pw" value="curavio123" placeholder="••••••••"></div>
         <button class="btn btn-a" style="margin-top:6px" onclick="doLogin()">Anmelden →</button>
         <div class="login-note">Demo: thomas@demo.de / curavio123</div>
+        <div class="login-note" style="margin-top:6px"><a href="#" onclick="showConsentModal(true);return false" style="color:var(--forest);font-weight:700">Datenschutzerklärung</a> · Keine Tracker, keine externen Dienste</div>
       </div>
     </div>
 
@@ -425,7 +426,8 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         <div class="qab" onclick="goTo('sc-chat')"><div class="qa-ico" style="background:var(--amber-lt)">💬</div><div><div class="qa-lbl">Nachricht</div><div class="qa-sub">An Betreuerin schreiben</div></div></div>
         <div class="qab" onclick="goTo('sc-rep')"><div class="qa-ico" style="background:var(--info-lt)">📋</div><div><div class="qa-lbl">Berichte</div><div class="qa-sub">Letzte Besuchsberichte</div></div></div>
         <div class="qab" onclick="goTo('sc-fin')"><div class="qa-ico" style="background:var(--success-lt)">💶</div><div><div class="qa-lbl">Rechnungen</div><div class="qa-sub">Budget &amp; Zahlungen</div></div></div>
-        <div class="qab" onclick="toast('Notfall: +49 30 1234567')" style="grid-column:span 2;flex-direction:row;align-items:center"><div class="qa-ico" style="background:var(--danger-lt)">🚨</div><div><div class="qa-lbl">Notfall</div><div class="qa-sub">Sofort-Kontakt</div></div></div>
+        <div class="qab" onclick="goTo('sc-nachweise')"><div class="qa-ico" style="background:var(--warn-lt)">✍️</div><div><div class="qa-lbl">Nachweise</div><div class="qa-sub">Digital unterschreiben</div></div></div>
+        <div class="qab" onclick="toast('Notfall: +49 30 1234567')"><div class="qa-ico" style="background:var(--danger-lt)">🚨</div><div><div class="qa-lbl">Notfall</div><div class="qa-sub">Sofort-Kontakt</div></div></div>
       </div>
 
       <!-- Upcoming visits -->
@@ -547,7 +549,7 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         <button class="ch-c" onclick="toast('Anruf wird gestartet …')">📞 Anruf</button>
       </div>
       <div class="cmsgs" id="cmsgs">
-        <div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>
+        <div class="sysmsg">Transportverschlüsselt (TLS) 🔒</div>
       </div>
       <div class="cinrow">
         <input class="cinp" id="cinp" placeholder="Nachricht …" onkeydown="if(event.key==='Enter')sendMsg()">
@@ -569,6 +571,18 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
       </div>
       <div class="stl">Meine Rechnungen</div>
       <div id="fin-invoices" style="padding:0 16px 20px">
+        <div style="padding:12px 6px;font-size:13px;color:var(--muted)">Wird geladen …</div>
+      </div>
+    </div>
+
+    <!-- ── LEISTUNGSNACHWEISE (Angehörige) ── -->
+    <div class="sc" id="sc-nachweise">
+      <div class="rhdr">
+        <h2>Leistungsnachweise</h2>
+        <p>Digital unterschreiben für die Pflegekasse</p>
+      </div>
+      <div style="height:10px"></div>
+      <div id="nachweise-list" style="padding:0 16px 20px">
         <div style="padding:12px 6px;font-size:13px;color:var(--muted)">Wird geladen …</div>
       </div>
     </div>
@@ -610,8 +624,9 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
       <div class="qag">
         <div class="qab" onclick="goTo('sc-auftraege')"><div class="qa-ico" style="background:var(--forest-lt)">📋</div><div><div class="qa-lbl">Aufträge</div><div class="qa-sub">Alle Einsätze</div></div></div>
         <div class="qab" onclick="goTo('sc-stempel')"><div class="qa-ico" style="background:var(--amber-lt)">⏱</div><div><div class="qa-lbl">Stempeln</div><div class="qa-sub">Ein- / Ausstempeln</div></div></div>
-        <div class="qab" onclick="goTo('sc-stunden')"><div class="qa-ico" style="background:var(--info-lt)">📊</div><div><div class="qa-lbl">Arbeitszeiten</div><div class="qa-sub">Wochenstunden</div></div></div>
+        <div class="qab" onclick="goTo('sc-stunden')"><div class="qa-ico" style="background:var(--info-lt)">📊</div><div><div class="qa-lbl">Arbeitszeiten</div><div class="qa-sub">Stunden &amp; Abrechnung</div></div></div>
         <div class="qab" onclick="goTo('sc-bchat')"><div class="qa-ico" style="background:var(--cream-dk)">💬</div><div><div class="qa-lbl">Nachrichten</div><div class="qa-sub">Mit Familien</div></div></div>
+        <div class="qab" onclick="goTo('sc-bnachweis')" style="grid-column:span 2;flex-direction:row;align-items:center"><div class="qa-ico" style="background:var(--warn-lt)">✍️</div><div><div class="qa-lbl">Leistungsnachweise</div><div class="qa-sub">Gegenzeichnen für die Pflegekasse</div></div></div>
       </div>
       <div style="height:16px"></div>
     </div>
@@ -662,6 +677,18 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         </div>
         <div style="text-align:right;font-size:12px;color:var(--muted)" id="ab-detail"></div>
       </div>
+      <div class="stl">Verfügbarkeit / Abwesenheit</div>
+      <div style="padding:0 16px 8px">
+        <div class="card" style="padding:14px 16px">
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div style="flex:1;min-width:130px"><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Datum</div>
+              <input type="date" id="av-date" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-md);background:var(--cream);font-family:var(--f-sans)"></div>
+            <button onclick="setAvailability(false)" style="background:var(--danger-lt);color:var(--danger);border:1.5px solid rgba(153,27,27,.2);border-radius:var(--r-md);padding:10px 14px;font-size:12px;font-weight:700;cursor:pointer">Abwesend</button>
+            <button onclick="setAvailability(true)" style="background:var(--success-lt);color:var(--success);border:1.5px solid rgba(45,106,79,.2);border-radius:var(--r-md);padding:10px 14px;font-size:12px;font-weight:700;cursor:pointer">Verfügbar</button>
+          </div>
+          <div id="av-list" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+        </div>
+      </div>
       <div class="stl">Letzte Einträge</div>
       <div id="az-list"><div style="padding:16px 22px;font-size:13px;color:var(--muted)">Noch keine Zeiten erfasst.</div></div>
     </div>
@@ -701,13 +728,22 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         <div><div class="ch-n" id="bchat-name">Familie Müller</div><div class="ch-s">● Online</div></div>
       </div>
       <div class="cmsgs" id="bcmsgs">
-        <div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>
+        <div class="sysmsg">Transportverschlüsselt (TLS) 🔒</div>
       </div>
       <div class="cinrow">
         <input class="cinp" id="bcinp" placeholder="Nachricht …" onkeydown="if(event.key==='Enter')sendBMsg()">
         <button class="sendb" onclick="sendBMsg()">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cream-lt)" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
+      </div>
+    </div>
+
+    <!-- ── LEISTUNGSNACHWEISE (Betreuer) ── -->
+    <div class="sc" id="sc-bnachweis">
+      <div class="bhdr"><h2>Leistungsnachweise</h2><p>Gegenzeichnen &amp; einreichen</p></div>
+      <div style="height:10px"></div>
+      <div id="bnachweis-list" style="padding:0 16px 20px">
+        <div style="padding:12px 6px;font-size:13px;color:var(--muted)">Wird geladen …</div>
       </div>
     </div>
 
@@ -753,6 +789,45 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
     </button>
   </nav>
 
+  <!-- DSGVO: Einwilligung beim ersten Login -->
+  <div id="modal-consent" style="display:none;position:absolute;inset:0;background:var(--forest);z-index:400;flex-direction:column;padding:24px;overflow-y:auto">
+    <div style="background:var(--cream-lt);border-radius:var(--r-xl);padding:22px;box-shadow:var(--s-lg);margin:auto 0">
+      <div style="font-family:var(--f-serif);font-size:22px;font-weight:600;color:var(--text)">Datenschutz &amp; Nutzungsbedingungen</div>
+      <div style="font-size:11px;color:var(--muted);margin:4px 0 12px">Version <span id="consent-version">2026-06</span> · DSGVO (EU 2016/679)</div>
+      <div style="max-height:300px;overflow-y:auto;background:var(--cream);border:1px solid var(--border);border-radius:var(--r-md);padding:14px;font-size:12px;line-height:1.65;color:var(--text)">
+        <b>Datenschutzerklärung (Kurzfassung)</b><br><br>
+        <b>1. Verantwortlicher:</b> Curavio GmbH, Musterstraße 1, 10115 Berlin, info@curavio.de<br><br>
+        <b>2. Zweck der Verarbeitung:</b> Organisation und Abrechnung ambulanter Alltagsbegleitung. Wir verarbeiten Stammdaten (Name, Kontakt), Einsatzdaten (Termine, Arbeitszeiten) und – als besondere Kategorie nach <b>Art. 9 DSGVO</b> – Gesundheitsdaten (Pflegegrad, Besuchsberichte). Rechtsgrundlage: Art. 6 Abs. 1 b (Vertrag), Art. 9 Abs. 2 h (Versorgung/Pflege) sowie Ihre Einwilligung.<br><br>
+        <b>3. Datensparsamkeit:</b> Es werden nur betrieblich notwendige Daten erhoben. Keine Weitergabe an Dritte ohne Ihre ausdrückliche Einwilligung. Keine Tracker, kein Analytics, keine externen Schriftarten.<br><br>
+        <b>4. Sicherheit:</b> Transportverschlüsselung (HTTPS/TLS), Passwort-Hashing (bcrypt), Verschlüsselung sensibler Felder (AES-256), Zugriff nur nach Rollenrecht, Protokollierung von Zugriffen (Audit-Log).<br><br>
+        <b>5. Speicherdauer:</b> Abrechnungsdaten 10 Jahre (§257 HGB), übrige Daten bis zur Löschung Ihres Kontos.<br><br>
+        <b>6. Ihre Rechte:</b> Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Datenübertragbarkeit (Art. 20), Widerruf der Einwilligung jederzeit über die App oder per E-Mail. Beschwerderecht bei der Datenschutzaufsicht.<br><br>
+        <b>Nutzungsbedingungen (AGB, Kurzfassung):</b> Curavio vermittelt und dokumentiert Leistungen der Alltagsbegleitung. Termine sind verbindlich nach Bestätigung. Digitale Unterschriften auf Leistungsnachweisen gelten als einfache elektronische Signatur (eIDAS).
+      </div>
+      <div id="consent-actions" style="margin-top:14px">
+        <button class="btn btn-a" onclick="acceptConsent()">✓ Ich willige ein &amp; akzeptiere</button>
+        <button onclick="declineConsent()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;padding:8px">Ablehnen &amp; abmelden</button>
+      </div>
+      <div id="consent-readonly" style="display:none;margin-top:14px">
+        <button class="btn btn-f" onclick="document.getElementById('modal-consent').style.display='none'">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Digitale Unterschrift (Canvas, Touch + Maus) -->
+  <div id="modal-sign" style="display:none;position:absolute;inset:0;background:rgba(26,42,30,.55);z-index:350;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)">
+    <div style="background:var(--cream-lt);border-radius:var(--r-xl);padding:20px;width:100%;box-shadow:var(--s-lg)">
+      <div style="font-family:var(--f-serif);font-size:20px;font-weight:600;color:var(--text)">Unterschrift</div>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 10px" id="sign-sub">Bitte im Feld unterschreiben (Finger oder Maus)</div>
+      <canvas id="sig-canvas" width="640" height="240" style="width:100%;height:130px;background:#fff;border:1.5px dashed var(--border-dk);border-radius:var(--r-md);touch-action:none"></canvas>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button onclick="sigClear()" style="flex:1;background:var(--cream-dk);border:1.5px solid var(--border);border-radius:var(--r-md);padding:11px;font-size:13px;font-weight:700;cursor:pointer;color:var(--muted)">↺ Löschen</button>
+        <button class="btn btn-f" style="flex:2" onclick="sigSubmit()">Unterschreiben &amp; Bestätigen ✓</button>
+      </div>
+      <button onclick="document.getElementById('modal-sign').style.display='none'" style="width:100%;margin-top:8px;background:none;border:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;padding:6px">Abbrechen</button>
+    </div>
+  </div>
+
   <!-- Pflicht-Besuchsbericht vor dem Ausstempeln -->
   <div id="modal-bericht" style="display:none;position:absolute;inset:0;background:rgba(26,42,30,.5);z-index:300;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(2px)">
     <div style="background:var(--cream-lt);border-radius:var(--r-xl);padding:22px;width:100%;box-shadow:var(--s-lg)">
@@ -777,9 +852,15 @@ let ws    = null;
 // ─── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
   initBookDates();
-  setTimeout(() => {
+  setTimeout(async () => {
     document.getElementById('loading').classList.add('hide');
-    if (TOKEN && USER) { showApp(); if (USER.role !== 'betreuer') loadAll(); }
+    if (TOKEN && USER) {
+      // DSGVO: Einwilligungsstatus prüfen, bevor die App startet
+      const me = await api('/auth/me').catch(() => null);
+      if (me && !me.error && me.consent_accepted !== true) { showConsentModal(false); return; }
+      if (me && me.error) { doLogout(); return; } // Token abgelaufen (8h)
+      startApp();
+    }
   }, 1200);
 });
 
@@ -803,10 +884,16 @@ function goTo(id) {
   if (nb) { const el = document.getElementById(nb); if (el) el.classList.add('active'); }
   if (id === 'sc-chat') { const d = document.getElementById('chat-dot'); if (d) d.style.display = 'none'; }
   if (id === 'sc-fin') loadFinanzen();
+  if (id === 'sc-nachweise') loadNachweise();
   // Betreuer-Seiten initialisieren
+  if (id === 'sc-bnachweis') loadBNachweise();
   if (id === 'sc-bchat') loadBetreuerMessages();
   if (id === 'sc-brep')  { initBericht(); loadBetreuerBerichte(); }
-  if (id === 'sc-stunden') loadArbeitszeiten();
+  if (id === 'sc-stunden') {
+    loadArbeitszeiten(); loadAvailabilityList();
+    const av = document.getElementById('av-date');
+    if (av && !av.value) av.value = new Date().toISOString().substring(0, 10);
+  }
   if (id === 'sc-stempel' && !stempelVisit) {
     api('/betreuer/visits').then(visits => {
       if (!Array.isArray(visits)) return;
@@ -861,7 +948,37 @@ async function doLogin() {
   TOKEN = data.token; USER = data.user;
   localStorage.setItem('curavio_token', TOKEN);
   localStorage.setItem('curavio_user', JSON.stringify(USER));
-  showApp(); loadAll();
+
+  // DSGVO: ohne gültige Einwilligung kein Zugriff auf die App
+  if (data.consent_required) { showConsentModal(false); return; }
+  startApp();
+}
+
+function startApp() {
+  showApp();
+  if (USER?.role !== 'betreuer') loadAll();
+}
+
+// ─── DSGVO: Einwilligung ─────────────────────────────────────────────────────
+function showConsentModal(readonly) {
+  document.getElementById('consent-actions').style.display = readonly ? 'none' : 'block';
+  document.getElementById('consent-readonly').style.display = readonly ? 'block' : 'none';
+  document.getElementById('modal-consent').style.display = 'flex';
+}
+
+async function acceptConsent() {
+  const r1 = await api('/me/consent', { method: 'POST', body: { type: 'datenschutz', accepted: true } });
+  await api('/me/consent', { method: 'POST', body: { type: 'agb', accepted: true } });
+  if (r1.error) { toast('Fehler: ' + r1.error); return; }
+  document.getElementById('modal-consent').style.display = 'none';
+  toast('✓ Einwilligung gespeichert');
+  startApp();
+}
+
+function declineConsent() {
+  document.getElementById('modal-consent').style.display = 'none';
+  toast('Ohne Einwilligung ist keine Nutzung möglich.');
+  doLogout();
 }
 
 function doLogout() {
@@ -951,6 +1068,19 @@ function connectWS() {
     }
     if (msg.type === 'new_assignment') { loadBetreuerHome(); loadAuftraege(); toast('📋 Neuer Auftrag eingegangen!'); showAnfragenBadge(1); }
     if (msg.type === 'new_report') { if (USER?.role !== 'betreuer') { loadReports(); toast('📋 Neuer Besuchsbericht verfügbar'); } }
+    if (msg.type === 'route_update' && USER?.role === 'betreuer') {
+      const t = msg.new_time ? new Date(msg.new_time).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
+      toast('🗺 Tourenplan geändert' + (t ? ' – neuer Termin ' + t + ' Uhr' : ''));
+      loadBetreuerHome(); loadAuftraege();
+    }
+    if (msg.type === 'visit_rescheduled' && USER?.role === 'angehoeriger') {
+      const t = msg.new_time ? new Date(msg.new_time).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
+      toast('🕐 Besuchszeit geändert' + (t ? ' – neu: ' + t + ' Uhr' : ''));
+      loadVisits();
+    }
+    if (msg.type === 'nachweis_created' && USER?.role === 'angehoeriger') {
+      toast('✍️ Neuer Leistungsnachweis zum Unterschreiben');
+    }
   };
   // Nur neu verbinden, wenn noch ein gültiger Login vorliegt (Token-Check vor Reconnect)
   ws.onclose = () => { if (TOKEN && USER) setTimeout(connectWS, 3000); };
@@ -1057,7 +1187,7 @@ async function loadReports() {
 async function loadMessages() {
   const msgs = await api('/messages/' + CHAT_ROOM);
   const box = document.getElementById('cmsgs');
-  box.innerHTML = '<div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>';
+  box.innerHTML = '<div class="sysmsg">Transportverschlüsselt (TLS) 🔒</div>';
   if (Array.isArray(msgs)) msgs.forEach(m => appendMsg(m, false));
   box.scrollTop = box.scrollHeight;
 }
@@ -1670,7 +1800,7 @@ async function loadBetreuerMessages() {
   const msgs = await api('/messages/' + CHAT_ROOM);
   const box = document.getElementById('bcmsgs');
   if (!box) return;
-  box.innerHTML = '<div class="sysmsg">Ende-zu-Ende verschlüsselt 🔒</div>';
+  box.innerHTML = '<div class="sysmsg">Transportverschlüsselt (TLS) 🔒</div>';
   if (Array.isArray(msgs)) msgs.forEach(m => appendBMsg(m, false));
   box.scrollTop = box.scrollHeight;
 }
@@ -1755,6 +1885,144 @@ async function loadBetreuerBerichte() {
       <div style="font-size:13px;color:var(--text);line-height:1.5">${r.content}</div>
     </div>`;
   }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEISTUNGSNACHWEISE + Canvas-Signatur (Klient & Betreuer)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let sigCallback = null;
+let sigHasInk = false;
+
+function openSignPad(sub, cb) {
+  sigCallback = cb;
+  document.getElementById('sign-sub').textContent = sub || 'Bitte im Feld unterschreiben (Finger oder Maus)';
+  document.getElementById('modal-sign').style.display = 'flex';
+  sigClear();
+}
+
+function sigClear() {
+  const c = document.getElementById('sig-canvas');
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.strokeStyle = '#1A2A1E'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  sigHasInk = false;
+}
+
+(function initSigPad() {
+  const c = document.getElementById('sig-canvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  let drawing = false;
+  const pos = (e) => {
+    const r = c.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height) };
+  };
+  c.addEventListener('pointerdown', e => { drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); });
+  c.addEventListener('pointermove', e => { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); sigHasInk = true; e.preventDefault(); });
+  ['pointerup','pointerleave','pointercancel'].forEach(ev => c.addEventListener(ev, () => drawing = false));
+})();
+
+async function sigSubmit() {
+  if (!sigHasInk) { toast('Bitte erst unterschreiben.'); return; }
+  const dataUrl = document.getElementById('sig-canvas').toDataURL('image/png');
+  document.getElementById('modal-sign').style.display = 'none';
+  if (sigCallback) await sigCallback(dataUrl);
+  sigCallback = null;
+}
+
+const LN_STATUS = {
+  'ausstehend':            '<span class="chip" style="background:var(--cream-dk);color:var(--muted)">Ausstehend</span>',
+  'klient_unterschrieben': '<span class="chip chip-a">Klient ✓</span>',
+  'vollstaendig':          '<span class="chip chip-g">Vollständig ✓✓</span>',
+  'eingereicht':           '<span class="chip chip-b">Eingereicht</span>'
+};
+
+function renderLnCard(ln, mode) {
+  const sum = (ln.leistungen || []).reduce((s, l) => s + (parseFloat(l.stunden) || 0), 0);
+  const rows = (ln.leistungen || []).slice(0, 8).map(l =>
+    `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)">
+      <span>${new Date(l.datum).toLocaleDateString('de-DE')} · ${l.leistung}</span>
+      <span style="color:var(--muted)">${l.betreuer || ''} · ${(parseFloat(l.stunden)||0).toFixed(1).replace('.',',')} h</span>
+    </div>`).join('');
+  const more = (ln.leistungen || []).length > 8 ? `<div style="font-size:11px;color:var(--muted);padding-top:4px">… und ${ln.leistungen.length - 8} weitere</div>` : '';
+
+  const needsMySig = mode === 'client' ? !ln.signature_client : !ln.signature_betreuer;
+  const signBtn = needsMySig && ln.status !== 'eingereicht'
+    ? `<button class="btn btn-a" style="margin-top:12px;padding:12px" onclick="signLn('${ln.id}','${mode}')">✍️ Jetzt unterschreiben</button>`
+    : '';
+  const pdfBtn = `<a href="${API}/leistungsnachweise/${ln.id}/pdf?token=${encodeURIComponent(TOKEN)}" target="_blank" style="display:block;text-align:center;margin-top:8px;padding:10px;background:var(--forest-lt);border-radius:var(--r-md);color:var(--forest);font-size:12px;font-weight:700;text-decoration:none">📄 PDF ansehen</a>`;
+
+  return `<div class="card" style="padding:16px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+      <div>
+        <div style="font-weight:700;font-size:14px">${ln.ln_number || 'Nachweis'} · ${ln.patient_name || ''}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${new Date(ln.period_from).toLocaleDateString('de-DE')} – ${new Date(ln.period_to).toLocaleDateString('de-DE')} · ${sum.toFixed(1).replace('.',',')} Std.</div>
+      </div>
+      ${LN_STATUS[ln.status] || ''}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">
+      ${ln.signature_client ? '✓ Klient unterschrieben' : '○ Klient ausstehend'} · ${ln.signature_betreuer ? '✓ Betreuer unterschrieben' : '○ Betreuer ausstehend'}
+    </div>
+    ${rows}${more}
+    ${signBtn}${pdfBtn}
+  </div>`;
+}
+
+async function loadNachweise() {
+  const el = document.getElementById('nachweise-list');
+  const lns = await api('/me/leistungsnachweise');
+  if (!Array.isArray(lns) || !lns.length) {
+    el.innerHTML = '<div style="padding:12px 6px;font-size:13px;color:var(--muted)">Keine Leistungsnachweise vorhanden. Sie werden monatlich von der Verwaltung erstellt.</div>';
+    return;
+  }
+  el.innerHTML = lns.map(ln => renderLnCard(ln, 'client')).join('');
+}
+
+async function loadBNachweise() {
+  const el = document.getElementById('bnachweis-list');
+  const lns = await api('/me/leistungsnachweise');
+  if (!Array.isArray(lns) || !lns.length) {
+    el.innerHTML = '<div style="padding:12px 6px;font-size:13px;color:var(--muted)">Keine Leistungsnachweise vorhanden.</div>';
+    return;
+  }
+  el.innerHTML = lns.map(ln => renderLnCard(ln, 'betreuer')).join('');
+}
+
+function signLn(id, mode) {
+  openSignPad(mode === 'client' ? 'Unterschrift Klient/Angehörige(r): ' + (USER?.name || '') : 'Unterschrift Betreuungskraft: ' + (USER?.name || ''), async (dataUrl) => {
+    const route = mode === 'client' ? 'sign-client' : 'sign-betreuer';
+    const res = await api(`/leistungsnachweise/${id}/${route}`, {
+      method: 'PATCH', body: { signature: dataUrl, signed_by: USER?.name || '' }
+    });
+    if (res.error) { toast('Fehler: ' + res.error); return; }
+    toast('✅ Unterschrift gespeichert' + (res.status === 'vollstaendig' ? ' – Nachweis vollständig!' : ''));
+    if (mode === 'client') loadNachweise(); else loadBNachweise();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BETREUER – Verfügbarkeit / Abwesenheit
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function setAvailability(available) {
+  const date = document.getElementById('av-date')?.value;
+  if (!date) { toast('Bitte Datum wählen'); return; }
+  const res = await api('/betreuer/availability', { method: 'PUT', body: { date, available } });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast(available ? '✅ Als verfügbar eingetragen' : '🏖 Abwesenheit eingetragen');
+  loadAvailabilityList();
+}
+
+async function loadAvailabilityList() {
+  const el = document.getElementById('av-list');
+  if (!el) return;
+  const rows = await api('/betreuer/availability');
+  if (!Array.isArray(rows)) return;
+  const abs = rows.filter(r => r.available === false);
+  el.innerHTML = abs.length
+    ? 'Abwesend: ' + abs.map(a => new Date(a.date).toLocaleDateString('de-DE')).join(', ')
+    : 'Keine Abwesenheiten eingetragen.';
 }
 
 // ─── ETA + Map animation ──────────────────────────────────────────────────────

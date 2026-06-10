@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Curavio – Disposition & Buchhaltung</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- DSGVO: keine externen Fonts/Tracker. Leaflet/OSM nur für Kartendarstellung (keine Personendaten an Dritte). -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -18,8 +20,8 @@
   --danger:#991B1B;--danger-lt:#FEE2E2;
   --info:#1E40AF;--info-lt:#DBEAFE;
   --r-sm:8px;--r-md:12px;--r-lg:16px;
-  --f-serif:'Cormorant Garant',Georgia,serif;
-  --f-sans:'DM Sans',system-ui,sans-serif;
+  --f-serif:'Palatino Linotype','Book Antiqua',Palatino,Georgia,serif;
+  --f-sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 body{font-family:var(--f-sans);background:var(--cream);color:var(--text);min-height:100vh}
 
@@ -143,6 +145,7 @@ a.plink:hover{text-decoration:underline}
     <div class="sb-sub">Disposition &amp; Buchhaltung</div>
     <div class="sb-item act" data-page="pg-ueber" onclick="nav(this)">📊 Übersicht</div>
     <div class="sb-item" data-page="pg-plan" onclick="nav(this)">🗓 Einsatzplanung</div>
+    <div class="sb-item" data-page="pg-route" onclick="nav(this)">🗺 Routenplanung</div>
     <div class="sb-item" data-page="pg-betreuer" onclick="nav(this)">🧑‍⚕️ Betreuer</div>
     <div class="sb-item" data-page="pg-klienten" onclick="nav(this)">🏡 Klienten</div>
     <div class="sb-item" data-page="pg-rechnungen" onclick="nav(this)">💶 Rechnungen</div>
@@ -166,16 +169,21 @@ a.plink:hover{text-decoration:underline}
         <div class="kpi"><div class="v" id="k-einsatz">–</div><div class="l">Betreuer im Einsatz</div></div>
         <div class="kpi warn"><div class="v" id="k-anfragen">–</div><div class="l">Offene Anfragen</div></div>
         <div class="kpi"><div class="v" id="k-besuche">–</div><div class="l">Besuche heute</div></div>
+        <div class="kpi warn"><div class="v" id="k-ln">–</div><div class="l">Nachweise offen</div></div>
       </div>
       <div class="grid2">
         <div class="card">
-          <h3>🔔 Anfragen-Queue <span class="muted">– sofort zuweisen</span></h3>
+          <h3>🔔 Anfragen-Queue <span class="muted">– KI weist automatisch zu, hier manuell übersteuern</span></h3>
           <div id="queue-list"><div class="muted">Wird geladen …</div></div>
         </div>
         <div class="card">
           <h3>📡 Live-Feed</h3>
           <div class="feed" id="live-feed"><div class="muted">Warte auf Ereignisse …</div></div>
         </div>
+      </div>
+      <div class="card">
+        <h3>🤖 KI-Dispositions-Log <span class="muted">– letzte automatische Zuweisungen</span></h3>
+        <div id="ai-log"><div class="muted">Wird geladen …</div></div>
       </div>
     </div>
 
@@ -197,6 +205,30 @@ a.plink:hover{text-decoration:underline}
       <div class="card">
         <h3>Verfügbarkeit (Abwesenheiten der Betreuer)</h3>
         <div id="avail-list" class="muted">–</div>
+      </div>
+    </div>
+
+    <!-- ── ROUTENPLANUNG ── -->
+    <div class="page" id="pg-route">
+      <h2>Routenplanung</h2>
+      <div class="psub">Tagesrouten auf der Karte · Optimierung per Nearest-Neighbor · Änderungen werden an Betreuer &amp; Familien gemeldet</div>
+      <div class="card">
+        <div class="frow" style="margin-bottom:14px">
+          <div class="fi" style="flex:0 0 160px"><label>Datum</label><input type="date" id="rt-date" onchange="loadRoute()"></div>
+          <div class="fi" style="flex:0 0 220px"><label>Betreuer</label><select id="rt-betreuer" onchange="loadRoute()"></select></div>
+          <button class="btn btn-g btn-sm" onclick="geocodeAll()" title="Adressen aller Klienten in Koordinaten umwandeln (einmalig nötig)">📍 Adressen geocodieren</button>
+          <div style="flex:1"></div>
+          <button class="btn btn-a btn-sm" onclick="optimizeRoute()">⚡ Route optimieren</button>
+          <button class="btn btn-f btn-sm" id="rt-apply-btn" style="display:none" onclick="applyRoute()">✓ Übernehmen &amp; benachrichtigen</button>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+          <div id="rt-map" style="height:480px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--cream-dk)"></div>
+          <div>
+            <h3 style="margin-bottom:10px">Besuchsliste</h3>
+            <div id="rt-stops" style="max-height:440px;overflow-y:auto" class="muted">Datum und Betreuer wählen.</div>
+          </div>
+        </div>
+        <div id="rt-plan" style="margin-top:14px"></div>
       </div>
     </div>
 
@@ -310,12 +342,33 @@ a.plink:hover{text-decoration:underline}
           <tbody id="inv-tbody"></tbody>
         </table>
       </div>
+
+      <div class="card">
+        <h3>Leistungsnachweise <span class="muted">– digital signiert für die Pflegekasse</span></h3>
+        <div class="frow" style="margin-bottom:12px">
+          <div class="fi" style="flex:0 0 160px"><label>Monat</label><input type="month" id="ln-monat" onchange="loadLnList()"></div>
+          <div class="fi" style="flex:0 0 200px"><label>Status</label>
+            <select id="ln-status" onchange="loadLnList()">
+              <option value="">Alle</option>
+              <option value="ausstehend">Ausstehend</option>
+              <option value="klient_unterschrieben">Klient unterschrieben</option>
+              <option value="vollstaendig">Vollständig</option>
+              <option value="eingereicht">Eingereicht</option>
+            </select>
+          </div>
+          <button class="btn btn-a btn-sm" onclick="bulkGenerateLn()">⚡ Alle Nachweise für Monat generieren</button>
+        </div>
+        <table>
+          <thead><tr><th>Nr.</th><th>Klient</th><th>Betreuer</th><th>Zeitraum</th><th>Std.</th><th>Klient ✍</th><th>Betreuer ✍</th><th>Status</th><th>Aktionen</th></tr></thead>
+          <tbody id="ln-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
-    <!-- ── EINSTELLUNGEN ── -->
+    <!-- ── EINSTELLUNGEN & DSGVO ── -->
     <div class="page" id="pg-settings">
-      <h2>Einstellungen</h2>
-      <div class="psub">Rechnungsvorlage, Stundensätze, MwSt</div>
+      <h2>Einstellungen &amp; Datenschutz</h2>
+      <div class="psub">Rechnungsvorlage, Stundensätze, MwSt, DSGVO-Verwaltung</div>
       <div class="grid2">
         <div class="card">
           <h3>Firma / Rechnungsvorlage</h3>
@@ -339,6 +392,56 @@ a.plink:hover{text-decoration:underline}
             werden pro Klient und Jahr im Tab „Klienten“ gepflegt. Neue Klienten erhalten automatisch
             Richtwerte nach Pflegegrad.
           </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>🛡 DSGVO – Technische &amp; organisatorische Maßnahmen</h3>
+          <div style="font-size:13px;line-height:2.1">
+            ✅ Verschlüsselung in Transit (HTTPS, Render erzwingt TLS)<br>
+            ✅ Passwort-Hashing bcrypt (rounds 12)<br>
+            ✅ JWT-Token-Expiry 8 Stunden<br>
+            ✅ Rate-Limiting aktiv (100 Req/Min, 10 Logins/Min, Konto-Sperre nach 5 Fehlversuchen)<br>
+            ✅ Audit-Log aktiv (Logins, Datenzugriffe, Exporte, Signaturen)<br>
+            ✅ Encryption at Rest: IBAN, Telefon &amp; Versichertennummer (AES-256-CBC)<br>
+            ✅ Einwilligungsverwaltung mit Version, Zeitstempel, IP, Widerruf<br>
+            ✅ Rollenbasierte Zugriffe (Angehörige/Betreuer sehen nur eigene Daten)<br>
+            ✅ Keine externen Fonts/Tracker/Analytics<br>
+            ⬜ Automatische Datenlöschung nach Aufbewahrungsfrist (geplant: Cron-Job)
+          </div>
+          <h3 style="margin-top:18px">Betroffenenrechte (Art. 15–20)</h3>
+          <div class="frow">
+            <div class="fi"><label>Benutzer</label><select id="dsgvo-user"></select></div>
+            <button class="btn btn-g btn-sm" onclick="dsgvoExport()">⬇ Datenauskunft (JSON)</button>
+            <button class="btn btn-sm" style="background:var(--danger-lt);color:var(--danger)" onclick="dsgvoDelete()">Pseudonymisieren</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Benutzerverwaltung</h3>
+          <div class="frow">
+            <div class="fi"><label>Name</label><input id="nu-name"></div>
+            <div class="fi"><label>E-Mail</label><input id="nu-email"></div>
+          </div>
+          <div class="frow" style="margin-top:12px">
+            <div class="fi"><label>Passwort (min. 8 Zeichen)</label><input id="nu-pw" type="password"></div>
+            <div class="fi" style="flex:0 0 160px"><label>Rolle</label>
+              <select id="nu-role"><option value="angehoeriger">Angehöriger</option><option value="betreuer">Betreuer</option><option value="admin">Admin</option></select>
+            </div>
+            <button class="btn btn-f btn-sm" onclick="createUser()">Anlegen</button>
+          </div>
+          <h3 style="margin-top:18px">Alle Benutzer</h3>
+          <div style="max-height:260px;overflow-y:auto">
+            <table><thead><tr><th>Name</th><th>E-Mail</th><th>Rolle</th><th>Letzter Login</th></tr></thead><tbody id="users-tbody"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🔍 Audit-Log <span class="muted">– letzte 300 Einträge</span></h3>
+        <button class="btn btn-g btn-sm" style="margin-bottom:10px" onclick="loadAuditLog()">Aktualisieren</button>
+        <div style="max-height:340px;overflow-y:auto">
+          <table><thead><tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Ressource</th><th>IP</th></tr></thead><tbody id="audit-tbody"></tbody></table>
         </div>
       </div>
     </div>
@@ -385,8 +488,15 @@ a.plink:hover{text-decoration:underline}
     </div>
     <div class="fi" style="margin-top:14px"><label>Qualifikationen (Komma-getrennt)</label><input id="mb-quali" placeholder="z.B. Betreuungskraft §43b, Erste Hilfe"></div>
     <div class="frow">
-      <div class="fi"><label>IBAN</label><input id="mb-iban"></div>
+      <div class="fi"><label>IBAN <span style="text-transform:none;font-weight:400">(verschlüsselt gespeichert)</span></label><input id="mb-iban" placeholder="DE.."></div>
       <div class="fi" style="flex:0 0 150px"><label>Steuer-ID</label><input id="mb-taxid"></div>
+    </div>
+    <div class="frow" style="margin-top:14px">
+      <div class="fi"><label>Heimatadresse (für Routenplanung)</label><input id="mb-address"></div>
+    </div>
+    <div class="frow" style="margin-top:14px">
+      <div class="fi" style="flex:0 0 140px"><label>Schichtstart</label><input type="time" id="mb-shift" value="08:00"></div>
+      <div class="fi" style="flex:0 0 160px"><label>Max. Std./Tag</label><input type="number" id="mb-maxh" value="8"></div>
     </div>
     <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-top:14px"><input type="checkbox" id="mb-active" checked> Aktiv</label>
     <div style="display:flex;gap:10px;margin-top:18px">
@@ -459,6 +569,14 @@ async function doLogin() {
   TOKEN = data.token; USER = data.user;
   localStorage.setItem('curavio_admin_token', TOKEN);
   localStorage.setItem('curavio_admin_user', JSON.stringify(USER));
+  // DSGVO: Einwilligung beim ersten Login
+  if (data.consent_required) {
+    if (!confirm('Datenschutzerklärung & Nutzungsbedingungen (Version ' + (data.consent_version || '2026-06') + ') akzeptieren?\n\nVerarbeitung von Gesundheitsdaten nach Art. 9 DSGVO zum Zweck der Pflegeorganisation. Volltext in der Klienten-App unter "Datenschutzerklärung". Ohne Einwilligung ist keine Nutzung möglich.')) {
+      doLogout(); return;
+    }
+    await api('/me/consent', { method: 'POST', body: { type: 'datenschutz', accepted: true } });
+    await api('/me/consent', { method: 'POST', body: { type: 'agb', accepted: true } });
+  }
   showApp();
 }
 
@@ -489,8 +607,14 @@ function showApp() {
   document.getElementById('fb-year').value = now.getFullYear();
   document.getElementById('mp-date').value = now.toISOString().substring(0,10);
   document.getElementById('mv-date').value = now.toISOString().substring(0,10);
+  document.getElementById('rt-date').value = now.toISOString().substring(0,10);
+  document.getElementById('ln-monat').value = ym;
   connectWS();
-  loadBase().then(() => { loadDashboard(); loadCalendar(); loadBetreuerList(); loadKlienten(); loadInvoices(); loadMonatsabschluss(); loadSettings(); loadCategories(); loadAvailability(); });
+  loadBase().then(() => {
+    loadDashboard(); loadCalendar(); loadBetreuerList(); loadKlienten(); loadInvoices();
+    loadMonatsabschluss(); loadSettings(); loadCategories(); loadAvailability();
+    loadLnList(); loadAiLog(); loadUsersList(); loadAuditLog();
+  });
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
@@ -499,6 +623,7 @@ function nav(el) {
   el.classList.add('act');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('act'));
   document.getElementById(el.dataset.page).classList.add('act');
+  if (el.dataset.page === 'pg-route') { initRouteMap(); loadRoute(); }
 }
 
 function closeModal(id){ document.getElementById(id).classList.remove('on'); }
@@ -511,8 +636,10 @@ async function loadBase() {
   fillGenRecipients();
   // Auftrags-Modal füllen
   document.getElementById('mv-patient').innerHTML = CACHE.patients.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-  document.getElementById('mv-betreuer').innerHTML = '<option value="">– offen (Anfrage) –</option>' +
+  document.getElementById('mv-betreuer').innerHTML = '<option value="">– offen (KI disponiert automatisch) –</option>' +
     CACHE.betreuer.filter(b => b.active !== false).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  // Routenplanung: Betreuer-Selector
+  document.getElementById('rt-betreuer').innerHTML = CACHE.betreuer.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
 }
 
 function fillGenRecipients() {
@@ -542,6 +669,8 @@ function connectWS() {
     if (msg.type === 'visit_update') { feedAdd('Besuch aktualisiert (' + (msg.visit_id || '') + ')'); loadDashboard(); loadCalendar(); }
     if (msg.type === 'new_assignment') { feedAdd('🔔 Neue Auftragsanfrage eingegangen'); loadDashboard(); }
     if (msg.type === 'new_report') { feedAdd('📋 Neuer Besuchsbericht'); }
+    if (msg.type === 'ai_dispatch') { feedAdd(`🤖 KI hat Besuch ${msg.visit_id} zugewiesen (${Math.round((msg.konfidenz || 0) * 100)}%)`); loadAiLog(); }
+    if (msg.type === 'nachweis_signed') { feedAdd('✍️ Leistungsnachweis unterschrieben (' + (msg.by === 'client' ? 'Klient' : 'Betreuer') + ')'); loadLnList(); loadDashboard(); }
   };
   ws.onclose = () => { if (TOKEN) setTimeout(connectWS, 4000); };
 }
@@ -557,6 +686,12 @@ async function loadDashboard() {
   document.getElementById('k-anfragen').textContent = d.offene_anfragen;
   document.getElementById('k-besuche').textContent = d.besuche_heute;
   loadQueue();
+  // Offene Leistungsnachweise (noch nicht vollständig signiert)
+  api('/admin/leistungsnachweise').then(lns => {
+    if (Array.isArray(lns)) {
+      document.getElementById('k-ln').textContent = lns.filter(l => ['ausstehend', 'klient_unterschrieben'].includes(l.status)).length;
+    }
+  }).catch(() => {});
 }
 
 async function loadQueue() {
@@ -736,6 +871,9 @@ function editBetreuer(id) {
   document.getElementById('mb-quali').value = (b.qualifications || []).join(', ');
   document.getElementById('mb-iban').value = b.iban || '';
   document.getElementById('mb-taxid').value = b.tax_id || '';
+  document.getElementById('mb-address').value = b.address || '';
+  document.getElementById('mb-shift').value = (b.shift_start || '08:00').substring(0, 5);
+  document.getElementById('mb-maxh').value = b.max_hours_per_day || 8;
   document.getElementById('mb-active').checked = b.active !== false;
   document.getElementById('modal-betreuer').classList.add('on');
 }
@@ -749,8 +887,11 @@ async function saveBetreuer() {
       phone: document.getElementById('mb-phone').value,
       hourly_rate: parseFloat(document.getElementById('mb-rate').value) || 0,
       qualifications: document.getElementById('mb-quali').value.split(',').map(s => s.trim()).filter(Boolean),
-      iban: document.getElementById('mb-iban').value,
+      iban: document.getElementById('mb-iban').value, // Server ignoriert maskierte Werte (••••)
       tax_id: document.getElementById('mb-taxid').value,
+      address: document.getElementById('mb-address').value,
+      shift_start: document.getElementById('mb-shift').value,
+      max_hours_per_day: parseInt(document.getElementById('mb-maxh').value) || 8,
       active: document.getElementById('mb-active').checked
     }
   });
@@ -1015,6 +1156,237 @@ async function addExpense() {
   document.getElementById('exp-desc').value = '';
   document.getElementById('exp-amount').value = '';
   loadMonatsabschluss();
+}
+
+// ─── Routenplanung (Leaflet + OSM) ───────────────────────────────────────────
+let rtMap = null, rtLayer = null, rtPendingPlan = null;
+
+function initRouteMap() {
+  if (rtMap) { setTimeout(() => rtMap.invalidateSize(), 120); return; }
+  rtMap = L.map('rt-map').setView([51.1634, 10.4477], 6);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap-Mitwirkende'
+  }).addTo(rtMap);
+  rtLayer = L.layerGroup().addTo(rtMap);
+}
+
+async function loadRoute() {
+  const bid = document.getElementById('rt-betreuer').value;
+  const date = document.getElementById('rt-date').value;
+  if (!bid || !date || !rtMap) return;
+  rtPendingPlan = null;
+  document.getElementById('rt-apply-btn').style.display = 'none';
+  document.getElementById('rt-plan').innerHTML = '';
+  const r = await api(`/admin/route/${bid}/${date}`);
+  const el = document.getElementById('rt-stops');
+  rtLayer.clearLayers();
+  if (r.error) { el.innerHTML = '<div class="muted">' + esc(r.error) + '</div>'; return; }
+  if (!r.stops.length) { el.innerHTML = '<div class="muted">Keine Besuche an diesem Tag.</div>'; return; }
+
+  const color = CAL_COLORS[CACHE.betreuer.findIndex(b => b.id === bid) % CAL_COLORS.length] || '#1C3A2A';
+  const pts = [];
+  if (r.betreuer?.home_lat != null) {
+    const home = [parseFloat(r.betreuer.home_lat), parseFloat(r.betreuer.home_lng)];
+    pts.push(home);
+    L.circleMarker(home, { radius: 8, color: '#333', fillColor: '#fff', fillOpacity: 1 })
+      .bindPopup('🏠 Start: ' + esc(r.betreuer.name)).addTo(rtLayer);
+  }
+  r.stops.forEach((s, i) => {
+    if (s.lat == null) return;
+    const ll = [s.lat, s.lng];
+    pts.push(ll);
+    L.circleMarker(ll, {
+      radius: 10, color: s.zeitkonflikt ? '#991B1B' : color,
+      fillColor: s.zeitkonflikt ? '#FEE2E2' : color, fillOpacity: s.zeitkonflikt ? 0.9 : 0.7, weight: s.zeitkonflikt ? 3 : 2
+    }).bindPopup(`<b>${i + 1}. ${esc(s.patient_name)}</b><br>${deT(s.scheduled_at)} Uhr · ${s.duration_min} Min.<br>${esc(s.service || '')}${s.zeitkonflikt ? '<br><b style="color:#991B1B">⚠ Zeitkonflikt!</b>' : ''}`)
+      .addTo(rtLayer);
+  });
+  if (pts.length >= 2) L.polyline(pts, { color, weight: 3, opacity: 0.7, dashArray: '6 8' }).addTo(rtLayer);
+  if (pts.length) rtMap.fitBounds(L.latLngBounds(pts).pad(0.2));
+
+  el.innerHTML = r.stops.map((s, i) => `
+    <div style="padding:9px 0;border-bottom:1px solid var(--border);${s.zeitkonflikt ? 'background:var(--danger-lt);border-radius:8px;padding:9px 8px;' : ''}">
+      <div style="font-weight:700;font-size:13px">${i + 1}. ${esc(s.patient_name)} ${s.lat == null ? '<span class="chip chip-a">nicht geocodiert</span>' : ''} ${s.zeitkonflikt ? '<span class="chip chip-r">⚠ Konflikt</span>' : ''}</div>
+      <div class="muted">${deT(s.scheduled_at)} Uhr · ${s.duration_min} Min. · ${esc(s.service || '')}</div>
+      ${s.travel_min_from_prev != null ? `<div class="muted">🚗 Anfahrt ca. ${s.travel_min_from_prev} Min. (${s.km_from_prev} km)</div>` : ''}
+    </div>`).join('');
+}
+
+async function geocodeAll() {
+  toast('Geocoding läuft … (1 Adresse / 1,5 s wegen API-Limit)');
+  const r = await api('/admin/geocode/all', { method: 'POST' });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast(`✅ ${r.geocoded.length} Adressen geocodiert${r.fehlgeschlagen.length ? ', ' + r.fehlgeschlagen.length + ' fehlgeschlagen' : ''}`);
+  loadRoute();
+}
+
+async function optimizeRoute() {
+  const bid = document.getElementById('rt-betreuer').value;
+  const date = document.getElementById('rt-date').value;
+  if (!bid || !date) { toast('Datum und Betreuer wählen'); return; }
+  const r = await api('/admin/route/optimize', { method: 'POST', body: { betreuer_id: bid, date } });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  rtPendingPlan = r.plan;
+  document.getElementById('rt-plan').innerHTML = `
+    <div class="inv-prev">
+      <div style="font-weight:700;margin-bottom:8px">Optimierte Reihenfolge (Vorschau – noch nicht übernommen):</div>
+      ${r.plan.map((p, i) => `<div class="row"><span>${i + 1}. ${esc(p.patient_name)} <span class="muted">(Anfahrt ${p.travel_min} Min.)</span></span>
+        <span>${deT(p.old_time)} → <b>${deT(p.new_time)}</b> Uhr</span></div>`).join('')}
+      <div class="muted" style="margin-top:8px">Bei Übernahme werden Betreuer und Familien automatisch benachrichtigt (bei Änderung &gt; 15 Min.).</div>
+    </div>`;
+  document.getElementById('rt-apply-btn').style.display = 'inline-flex';
+}
+
+async function applyRoute() {
+  if (!rtPendingPlan) return;
+  const r = await api('/admin/route/apply', {
+    method: 'PATCH',
+    body: { changes: rtPendingPlan.map(p => ({ visit_id: p.visit_id, new_time: p.new_time })) }
+  });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast(`✅ Route übernommen (${r.applied.length} Besuche aktualisiert)`);
+  rtPendingPlan = null;
+  document.getElementById('rt-apply-btn').style.display = 'none';
+  document.getElementById('rt-plan').innerHTML = '';
+  loadRoute(); loadCalendar();
+}
+
+// ─── Leistungsnachweise (Admin) ──────────────────────────────────────────────
+const LN_CHIP = {
+  'ausstehend': '<span class="chip chip-m">Ausstehend</span>',
+  'klient_unterschrieben': '<span class="chip chip-a">Klient ✓</span>',
+  'vollstaendig': '<span class="chip chip-g">Vollständig</span>',
+  'eingereicht': '<span class="chip chip-b">Eingereicht</span>'
+};
+
+async function loadLnList() {
+  const monat = document.getElementById('ln-monat').value;
+  const status = document.getElementById('ln-status').value;
+  const q = [];
+  if (monat) q.push('monat=' + monat);
+  if (status) q.push('status=' + status);
+  const lns = await api('/admin/leistungsnachweise' + (q.length ? '?' + q.join('&') : ''));
+  if (!Array.isArray(lns)) return;
+  document.getElementById('ln-tbody').innerHTML = lns.map(ln => {
+    const sum = (ln.leistungen || []).reduce((s, l) => s + (parseFloat(l.stunden) || 0), 0);
+    return `<tr>
+      <td style="font-weight:700">${esc(ln.ln_number || ln.id)}</td>
+      <td>${esc(ln.patient_name || '')}</td>
+      <td>${esc(ln.betreuer_name || '')}</td>
+      <td class="muted">${deD(ln.period_from)}–${deD(ln.period_to)}</td>
+      <td>${sum.toFixed(1).replace('.', ',')}</td>
+      <td>${ln.signature_client ? '✅' : '⬜'}</td>
+      <td>${ln.signature_betreuer ? '✅' : '⬜'}</td>
+      <td>${LN_CHIP[ln.status] || esc(ln.status)}</td>
+      <td style="white-space:nowrap">
+        <a class="plink" href="${API}/leistungsnachweise/${ln.id}/pdf?token=${encodeURIComponent(TOKEN)}" target="_blank">PDF</a>
+        ${ln.status === 'vollstaendig' ? ` · <a class="plink" href="#" onclick="lnEinreichen('${ln.id}');return false">An Pflegekasse einreichen</a>` : ''}
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="9" class="muted">Keine Leistungsnachweise.</td></tr>';
+}
+
+async function bulkGenerateLn() {
+  const monat = document.getElementById('ln-monat').value;
+  if (!monat) { toast('Monat wählen'); return; }
+  const r = await api('/admin/leistungsnachweise/bulk-generate', { method: 'POST', body: { monat } });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast(`✅ ${r.created.length} Nachweise erstellt, ${r.skipped.length} übersprungen`);
+  loadLnList(); loadDashboard();
+}
+
+async function lnEinreichen(id) {
+  const r = await api(`/leistungsnachweise/${id}/einreichen`, { method: 'PATCH' });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast('✅ Als eingereicht markiert');
+  loadLnList();
+}
+
+// ─── KI-Dispositions-Log ─────────────────────────────────────────────────────
+async function loadAiLog() {
+  const log = await api('/admin/ai-dispatch/log');
+  const el = document.getElementById('ai-log');
+  if (!Array.isArray(log) || !log.length) { el.innerHTML = '<div class="muted">Noch keine KI-Entscheidungen. Neue Anfragen werden automatisch disponiert.</div>'; return; }
+  el.innerHTML = log.slice(0, 12).map(e => {
+    const conf = Math.round((parseFloat(e.ai_dispatch_confidence) || 0) * 100);
+    const note = e.ai_dispatch_note || {};
+    return `<div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px">${esc(e.patient_name || '')} → ${esc(e.betreuer_name || '–')}
+          <span class="chip ${conf >= 70 ? 'chip-g' : conf >= 40 ? 'chip-a' : 'chip-r'}">${conf}% ${note.quelle === 'heuristik' ? '· Heuristik' : '· KI'}</span>
+          ${e.dispatch_overridden ? '<span class="chip chip-m">manuell geändert</span>' : ''}
+        </div>
+        <div class="muted">${deD(e.scheduled_at)} ${deT(e.scheduled_at)} · ${esc(e.service || '')} · ${esc(note.begruendung || '')}</div>
+        ${(note.warnungen || []).length ? `<div style="color:var(--danger);font-size:12px;font-weight:600">⚠ ${note.warnungen.map(esc).join(' · ')}</div>` : ''}
+      </div>
+      <select id="ai-ovr-${e.id}" style="padding:6px;border:1.5px solid var(--border);border-radius:8px;background:var(--cream)">
+        ${CACHE.betreuer.filter(b => b.active !== false).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}
+      </select>
+      <button class="btn btn-g btn-sm" onclick="aiOverride('${e.id}')">Ändern</button>
+    </div>`;
+  }).join('');
+}
+
+async function aiOverride(visitId) {
+  const bid = document.getElementById('ai-ovr-' + visitId)?.value;
+  if (!bid) return;
+  const r = await api(`/admin/ai-dispatch/${visitId}/override`, { method: 'PATCH', body: { betreuer_id: bid } });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast('✅ Zuweisung geändert');
+  loadAiLog(); loadCalendar(); loadDashboard();
+}
+
+// ─── DSGVO: Benutzer, Auskunft, Pseudonymisierung, Audit ────────────────────
+async function loadUsersList() {
+  const users = await api('/admin/users');
+  if (!Array.isArray(users)) return;
+  document.getElementById('users-tbody').innerHTML = users.map(u => `
+    <tr><td style="font-weight:600">${esc(u.name)}</td><td>${esc(u.email)}</td>
+    <td><span class="chip chip-m">${esc(u.role)}</span>${u.active === false ? ' <span class="chip chip-r">deaktiviert</span>' : ''}</td>
+    <td class="muted">${u.last_login ? deD(u.last_login) + ' ' + deT(u.last_login) : '–'}</td></tr>`).join('');
+  document.getElementById('dsgvo-user').innerHTML = users.map(u => `<option value="${u.id}">${esc(u.name)} (${esc(u.role)})</option>`).join('');
+}
+
+async function createUser() {
+  const r = await api('/admin/users', {
+    method: 'POST',
+    body: {
+      name: document.getElementById('nu-name').value,
+      email: document.getElementById('nu-email').value,
+      password: document.getElementById('nu-pw').value,
+      role: document.getElementById('nu-role').value
+    }
+  });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast('✅ Benutzer angelegt');
+  ['nu-name', 'nu-email', 'nu-pw'].forEach(id => document.getElementById(id).value = '');
+  loadUsersList(); loadBase();
+}
+
+function dsgvoExport() {
+  const uid = document.getElementById('dsgvo-user').value;
+  if (uid) window.open(`${API}/admin/dsgvo/export/${uid}?token=${encodeURIComponent(TOKEN)}`, '_blank');
+}
+
+async function dsgvoDelete() {
+  const sel = document.getElementById('dsgvo-user');
+  const uid = sel.value;
+  if (!uid) return;
+  if (!confirm(`"${sel.options[sel.selectedIndex].text}" wirklich pseudonymisieren?\n\nName/E-Mail/Kontaktdaten werden unkenntlich gemacht, Gesundheitsdaten gelöscht. Rechnungsdaten bleiben 10 Jahre erhalten (§257 HGB). Nicht rückgängig machbar!`)) return;
+  const r = await api(`/admin/dsgvo/delete/${uid}`, { method: 'POST' });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast('✅ ' + r.message);
+  loadUsersList(); loadBase();
+}
+
+async function loadAuditLog() {
+  const log = await api('/admin/audit-log');
+  if (!Array.isArray(log)) return;
+  document.getElementById('audit-tbody').innerHTML = log.map(a => `
+    <tr><td class="muted" style="white-space:nowrap">${deD(a.created_at)} ${deT(a.created_at)}</td>
+    <td>${esc(a.user_id || '–')}</td><td style="font-weight:600">${esc(a.action)}</td>
+    <td class="muted">${esc(a.resource_type || '')} ${esc(a.resource_id || '')}</td>
+    <td class="muted">${esc(a.ip_address || '')}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Leer.</td></tr>';
 }
 
 // ─── Einstellungen ───────────────────────────────────────────────────────────

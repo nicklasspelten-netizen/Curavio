@@ -54,12 +54,16 @@ JWT_SECRET=curavio_super_secret_jwt_key_2024
 PORT=3000
 DATABASE_URL=postgresql://curavio_db_user:2dF2WTqZNDriII1zmnl7hntKHeHqQQZG@dpg-d8k54rtdt1ts73ao0mvg-a/curavio_db
 ANTHROPIC_API_KEY=<key hier eintragen>
+ENCRYPTION_KEY=<32-Byte hex; node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
+ORS_API_KEY=<optional, openrouteservice.org für besseres Geocoding>
 ```
 
 ### Render.com (bereits gesetzt)
 - `DATABASE_URL` – PostgreSQL Internal URL (bereits verbunden)
 - `JWT_SECRET` – gesetzt
 - `PORT` – von Render automatisch gesetzt
+- `ENCRYPTION_KEY` – **NOCH SETZEN!** (sonst Fallback-Key aus JWT_SECRET abgeleitet)
+- `ORS_API_KEY` – optional (ohne: Nominatim-Geocoding + Luftlinien-Fahrzeitschätzung)
 
 ---
 
@@ -195,11 +199,60 @@ GET/PUT /api/betreuer/availability          – Verfügbarkeit/Abwesenheit
 POST /api/visits/:id/rating                 – Besuch bewerten (1-5 Sterne, Angehörige)
 ```
 
+### DSGVO (seit Juni 2026)
+```
+POST /api/me/consent                – Einwilligung speichern (Typ, Version, IP)
+POST /api/me/consent/revoke         – Widerruf (sperrt App-Zugriff)
+GET  /api/me/consents               – Eigene Einwilligungen
+GET  /api/me/dsgvo/export           – Eigene Datenauskunft als JSON (Art. 15/20)
+GET  /api/admin/dsgvo/export/:uid   – Datenauskunft für Nutzer (Admin)
+POST /api/admin/dsgvo/delete/:uid   – Pseudonymisierung (Rechnungen bleiben, §257 HGB)
+GET  /api/admin/audit-log           – Audit-Log (letzte 300)
+```
+- AES-256-CBC-Feldverschlüsselung: `users.iban`, `patients.phone`, `patients.insurance_number`
+  (Format `enc:v1:<iv>:<cipher>`, Altbestand bleibt lesbar). `encryptField()`/`decryptField()`.
+- Rate-Limiting: 100 Req/Min global, 10 Logins/Min, Konto-Sperre 15 Min nach 5 Fehlversuchen.
+- JWT-Expiry 8h, bcrypt rounds 12, Login-Audit, `last_login`.
+- Consent-Gate: Login liefert `consent_required`; App blockt bis POST /api/me/consent.
+- Keine Google Fonts mehr (Systemschriften); Leaflet/OSM nur im Admin (Kartenkacheln).
+
+### Leistungsnachweise (digital signiert)
+```
+POST /api/admin/leistungsnachweise/generate       – {patient_id, period_from, period_to}
+POST /api/admin/leistungsnachweise/bulk-generate  – {monat: 'YYYY-MM'} alle Klienten
+GET  /api/admin/leistungsnachweise                – Filter: status, patient_id, betreuer_id, monat
+GET  /api/me/leistungsnachweise                   – Eigene (Klient über Patient / Betreuer)
+PATCH /api/leistungsnachweise/:id/sign-client     – {signature: dataURL-PNG, signed_by}
+PATCH /api/leistungsnachweise/:id/sign-betreuer   – dito; beide Sig. → status 'vollstaendig'
+PATCH /api/leistungsnachweise/:id/einreichen      – an Pflegekasse (Admin)
+GET  /api/leistungsnachweise/:id/pdf              – PDF mit beiden Unterschriftsbildern + eIDAS-Footer
+```
+Workflow: ausstehend → klient_unterschrieben → vollstaendig → eingereicht.
+Canvas-Signatur in index.html (sc-nachweise für Klienten, sc-bnachweis für Betreuer).
+Rechnungsgenerierung verknüpft automatisch den LN mit gleichem Klient+Zeitraum.
+
+### Routenplanung & KI-Disposition
+```
+POST /api/admin/geocode/:patient_id   – Adresse → lat/lng (ORS oder Nominatim)
+POST /api/admin/geocode/all           – Batch inkl. Betreuer-Heimatadressen (1 Req/1.5s)
+GET  /api/admin/route/:bid/:date      – Tagesroute + Fahrzeitschätzung + Zeitkonflikte
+POST /api/admin/route/optimize        – Nearest-Neighbor-Reihenfolge ab Heimatadresse
+PATCH /api/admin/route/apply          – {changes:[{visit_id,new_time}]}; Δ>15min → WS
+POST /api/admin/ai-dispatch/:visit_id – KI-Zuweisung manuell triggern
+GET  /api/admin/ai-dispatch/log       – Entscheidungslog (Begründung, Konfidenz)
+PATCH /api/admin/ai-dispatch/:id/override – manuell übersteuern
+```
+KI-Disposition läuft automatisch nach jedem POST /api/visits mit status 'anfrage'
+(claude-haiku-4-5; ohne ANTHROPIC_API_KEY regelbasierte Heuristik: Nähe + freie Kapazität).
+WS-Events: `route_update` (Betreuer), `visit_rescheduled` (Angehörige), `ai_dispatch` (Admin),
+`nachweis_signed`, `nachweis_created`.
+
 ### Disponenten-Dashboard
-`public/admin.html` → erreichbar unter **/admin** (Desktop, nur role=admin).
-Tabs: Übersicht (KPIs + Anfragen-Queue + Live-Feed), Einsatzplanung (Wochenkalender
-mit Konflikterkennung), Betreuer, Klienten (Freibeträge), Rechnungen & Buchhaltung,
-Einstellungen.
+`public/admin.html` → erreichbar unter **/admin** (Desktop, nur role=admin). 7 Tabs:
+Übersicht (KPIs + Anfragen-Queue + KI-Log + Live-Feed), Einsatzplanung (Wochenkalender mit
+Konflikterkennung), Routenplanung (Leaflet-Karte, Optimierung, Benachrichtigung), Betreuer,
+Klienten (Freibeträge), Rechnungen & Buchhaltung (inkl. Leistungsnachweis-Verwaltung),
+Einstellungen & DSGVO (TOMs-Checkliste, Audit-Log, Benutzerverwaltung, Datenauskunft/Pseudonymisierung).
 
 ---
 
@@ -308,13 +361,23 @@ push_zu_github.bat
 - [x] **Kritischer Bugfix** – VARCHAR-Visit-IDs in onclick-Handlern jetzt gequotet (Annehmen/Stempeln funktionierte vorher nie)
 - [x] **Pflichtbericht vor Ausstempeln** + optionaler GPS-Zeitstempel
 - [x] **Klienten-Finanzen** – Rechnungen einsehen/PDF, Freibetragsstand, Bewertung nach Besuch
+- [x] **DSGVO-Fundament** – AES-256-Feldverschlüsselung, Rate-Limiting, Audit-Log, Consent-Gate,
+      Datenauskunft/Pseudonymisierung, Login-Sperre, JWT 8h, keine Google Fonts
+- [x] **Leistungsnachweise** – Canvas-Signatur beider Seiten, PDF mit Unterschriftsbildern,
+      Bulk-Generierung, Einreichen-Workflow, Admin-Verwaltung
+- [x] **Routenplanung** – Leaflet-Karte im Admin, Geocoding (ORS/Nominatim), Nearest-Neighbor-
+      Optimierung, Übernahme mit WS-Benachrichtigung bei Δ>15min
+- [x] **KI-Disposition** – automatische Betreuer-Zuweisung bei neuen Anfragen (claude-haiku,
+      Heuristik-Fallback), Entscheidungslog mit Override im Admin
 
 ### Mittlere Priorität
+- [ ] **ENCRYPTION_KEY auf Render setzen** (aktuell Fallback aus JWT_SECRET)
 - [ ] **Push-Benachrichtigungen** – Web Push API (VAPID-Keys nötig) für neue Aufträge / Statusänderungen
 - [ ] **Patientenprofil** – Detailansicht mit Medikamenten, Notizen, Kontakten
 - [ ] **Mehrere Patienten** – Angehörige mit mehreren Pflegebedürftigen (UI; API unterstützt es bereits)
 - [ ] **Freibetrags-Werte prüfen** – Defaults folgen der Projektvorgabe (125€/Monat §45b, 1.612€
       Verhinderungspflege, 4.000€ §35a). Gesetzliche Anpassungen pro Klient im Admin pflegbar.
+- [ ] **Auto-Löschung nach Aufbewahrungsfrist** – Cron-Job (letzter offener TOM-Punkt)
 
 ### Technische Schulden
 - [ ] **index.html aufteilen** – React oder zumindest separate JS/CSS-Dateien

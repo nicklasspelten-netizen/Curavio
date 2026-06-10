@@ -8,10 +8,48 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const { Pool } = require('pg');
 const PDFDocument = require('pdfkit');
+const crypto = require('crypto');
+const https = require('https');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'curavio_dev_secret_2024';
+const JWT_EXPIRY = '8h'; // DSGVO-TOM: kurze Token-Laufzeit
+
+// ===== DSGVO: Feld-Verschlüsselung AES-256-CBC =====
+// Key aus ENCRYPTION_KEY (32-Byte hex); Fallback: aus JWT_SECRET abgeleitet,
+// damit Bestandsumgebungen ohne neue Env-Variable nicht brechen.
+const ENC_KEY = process.env.ENCRYPTION_KEY && /^[0-9a-f]{64}$/i.test(process.env.ENCRYPTION_KEY)
+  ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex')
+  : crypto.createHash('sha256').update('curavio_field_enc:' + JWT_SECRET).digest();
+if (!process.env.ENCRYPTION_KEY) console.warn('[DSGVO] ENCRYPTION_KEY nicht gesetzt – Fallback-Key aus JWT_SECRET abgeleitet.');
+
+function encryptField(value) {
+  if (value == null || value === '') return value || '';
+  const s = String(value);
+  if (s.startsWith('enc:v1:')) return s; // bereits verschlüsselt
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENC_KEY, iv);
+  const enc = Buffer.concat([cipher.update(s, 'utf8'), cipher.final()]);
+  return `enc:v1:${iv.toString('hex')}:${enc.toString('hex')}`;
+}
+
+function decryptField(value) {
+  if (value == null || value === '') return value || '';
+  const s = String(value);
+  if (!s.startsWith('enc:v1:')) return s; // Altbestand unverschlüsselt
+  try {
+    const [, , ivHex, dataHex] = s.split(':');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENC_KEY, Buffer.from(ivHex, 'hex'));
+    return Buffer.concat([decipher.update(Buffer.from(dataHex, 'hex')), decipher.final()]).toString('utf8');
+  } catch { return '[Entschlüsselung fehlgeschlagen]'; }
+}
+
+const maskIban = (iban) => {
+  const v = decryptField(iban);
+  return v && v.length > 4 ? '••••' + v.slice(-4) : v || '';
+};
 
 // PostgreSQL
 const pool = new Pool({
@@ -19,9 +57,31 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
+app.set('trust proxy', 1); // Render-Proxy: echte Client-IP für Audit-Log & Rate-Limit
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '2mb' })); // Signatur-PNGs (Base64) brauchen etwas Platz
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ===== DSGVO: Rate-Limiting =====
+app.use('/api/', rateLimit({
+  windowMs: 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Zu viele Anfragen – bitte kurz warten.' }
+}));
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Zu viele Login-Versuche – bitte 1 Minute warten.' }
+});
+
+// ===== DSGVO: Audit-Log =====
+async function audit(req, action, resourceType, resourceId) {
+  try {
+    await pool.query(
+      'INSERT INTO audit_log (user_id, action, resource_type, resource_id, ip_address, user_agent) VALUES ($1,$2,$3,$4,$5,$6)',
+      [req.user?.id || null, action, resourceType || '', resourceId != null ? String(resourceId) : '',
+       req.ip || '', (req.headers['user-agent'] || '').substring(0, 250)]
+    );
+  } catch { /* Audit darf den Request nie blockieren */ }
+}
 
 const gid = (p) => p + '_' + uuidv4().replace(/-/g, '').substring(0, 12);
 const num = (x) => parseFloat(x || 0) || 0;
@@ -99,21 +159,93 @@ async function initDB() {
       ALTER TABLE visits ADD COLUMN IF NOT EXISTS gps_end TEXT DEFAULT '';
       ALTER TABLE visits ALTER COLUMN betreuer_id DROP NOT NULL;
 
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS ai_dispatch_note TEXT DEFAULT '';
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS ai_dispatch_confidence DECIMAL(4,2);
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS ai_dispatched_at TIMESTAMP;
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS dispatch_overridden BOOLEAN DEFAULT false;
+
       ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50) DEFAULT '';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS hourly_rate DECIMAL(8,2) DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS qualifications TEXT DEFAULT '[]';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS iban VARCHAR(50) DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS iban TEXT DEFAULT '';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS tax_id VARCHAR(50) DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS home_lat DECIMAL(10,7);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS home_lng DECIMAL(10,7);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS shift_start TIME DEFAULT '08:00';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hours_per_day INTEGER DEFAULT 8;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_accepted BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_accepted_at TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_logins INTEGER DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;
 
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS pflegegrad INTEGER DEFAULT 1;
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS birth_date DATE;
-      ALTER TABLE patients ADD COLUMN IF NOT EXISTS phone VARCHAR(50) DEFAULT '';
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS insurance VARCHAR(255) DEFAULT '';
-      ALTER TABLE patients ADD COLUMN IF NOT EXISTS insurance_number VARCHAR(100) DEFAULT '';
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS insurance_number TEXT DEFAULT '';
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS emergency_contact TEXT DEFAULT '';
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS lat DECIMAL(10,7);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS lng DECIMAL(10,7);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS address_geocoded BOOLEAN DEFAULT false;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS preferred_time_from TIME;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS preferred_time_to TIME;
 
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS tasks_done TEXT DEFAULT '[]';
+
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS entlastungsbetrag_abzug DECIMAL(10,2) DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS verhinderungspflege_abzug DECIMAL(10,2) DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS leistungsnachweis_id VARCHAR(50);
+
+      -- ===== DSGVO-Tabellen =====
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(50),
+        action VARCHAR(255),
+        resource_type VARCHAR(50),
+        resource_id VARCHAR(50),
+        ip_address VARCHAR(50),
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS consents (
+        id VARCHAR(50) PRIMARY KEY,
+        user_id VARCHAR(50) NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        version VARCHAR(20),
+        accepted BOOLEAN DEFAULT false,
+        accepted_at TIMESTAMP,
+        ip_address VARCHAR(50),
+        revoked_at TIMESTAMP
+      );
+
+      -- ===== Leistungsnachweise (digital signiert) =====
+      CREATE TABLE IF NOT EXISTS leistungsnachweise (
+        id VARCHAR(50) PRIMARY KEY,
+        patient_id VARCHAR(50) NOT NULL,
+        betreuer_id VARCHAR(50) NOT NULL,
+        visit_id VARCHAR(50),
+        invoice_id VARCHAR(50),
+        ln_number VARCHAR(50) UNIQUE,
+        period_from DATE NOT NULL,
+        period_to DATE NOT NULL,
+        leistungen TEXT DEFAULT '[]',
+        signature_client TEXT,
+        signed_by_client VARCHAR(255),
+        signed_at_client TIMESTAMP,
+        signed_ip_client VARCHAR(50),
+        signature_betreuer TEXT,
+        signed_by_betreuer VARCHAR(255),
+        signed_at_betreuer TIMESTAMP,
+        status VARCHAR(50) DEFAULT 'ausstehend',
+        pdf_url TEXT,
+        krankenkasse VARCHAR(255) DEFAULT '',
+        eingereicht_at TIMESTAMP,
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
 
       -- ===== Neue Tabellen: Buchhaltung =====
       CREATE TABLE IF NOT EXISTS invoices (
@@ -353,35 +485,71 @@ const notifyNewAssignment = (visit) => wsBroadcast(
 );
 
 // ===== AUTH ROUTEN =====
-app.post('/api/auth/login', async (req, res) => {
+const CONSENT_VERSION = '2026-06';
+
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
   try {
     const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
     const user = rows[0];
+
+    // Konto-Sperre nach 5 Fehlversuchen (15 Min.)
+    if (user?.locked_until && new Date(user.locked_until) > new Date()) {
+      await audit(req, 'login_blocked_locked', 'user', user.id);
+      return res.status(429).json({ error: 'Konto vorübergehend gesperrt. Bitte in 15 Minuten erneut versuchen.' });
+    }
+
     if (!user || !await bcrypt.compare(password, user.password)) {
+      if (user) {
+        const fails = (user.failed_logins || 0) + 1;
+        await pool.query(
+          'UPDATE users SET failed_logins=$1, locked_until = CASE WHEN $1 >= 5 THEN NOW() + INTERVAL \'15 minutes\' ELSE locked_until END WHERE id=$2',
+          [fails, user.id]
+        );
+        await audit(req, 'login_failed', 'user', user.id);
+      } else {
+        await audit(req, 'login_failed_unknown_email', 'user', '');
+      }
       return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
     }
     if (user.active === false) return res.status(403).json({ error: 'Konto deaktiviert' });
-    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email } });
+
+    await pool.query('UPDATE users SET failed_logins=0, locked_until=NULL, last_login=NOW() WHERE id=$1', [user.id]);
+    req.user = { id: user.id }; // für Audit-Log (req.ip bleibt erhalten)
+    await audit(req, 'login', 'user', user.id);
+
+    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, role: user.role, email: user.email },
+      consent_required: user.consent_accepted !== true,
+      consent_version: CONSENT_VERSION
+    });
   } catch (e) {
     res.status(500).json({ error: 'Server Fehler' });
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/logout', auth, async (req, res) => {
+  await audit(req, 'logout', 'user', req.user.id);
+  res.json({ success: true });
+});
+
+app.post('/api/auth/register', loginLimiter, async (req, res) => {
   const { name, email, password, role } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, E-Mail und Passwort erforderlich' });
+  if (String(password).length < 8) return res.status(400).json({ error: 'Passwort: mindestens 8 Zeichen' });
   // Keine Selbst-Registrierung als Admin
   const safeRole = ['angehoeriger', 'betreuer'].includes(role) ? role : 'angehoeriger';
   try {
     const id = gid('u');
-    const hashed = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 12);
     await pool.query(
       'INSERT INTO users (id, name, email, password, role) VALUES ($1,$2,$3,$4,$5)',
       [id, name, email.toLowerCase(), hashed, safeRole]
     );
+    await audit(req, 'user_registered', 'user', id);
     res.json({ success: true, message: 'Registrierung erfolgreich' });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'E-Mail bereits registriert' });
@@ -389,10 +557,50 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// ===== DSGVO: Einwilligungen =====
+app.get('/api/me/consents', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM consents WHERE user_id=$1 ORDER BY accepted_at DESC NULLS LAST', [req.user.id]);
+    res.json({ consent_version: CONSENT_VERSION, consents: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/me/consent', auth, async (req, res) => {
+  const { type, accepted } = req.body;
+  const t = type || 'datenschutz';
+  try {
+    await pool.query(
+      'INSERT INTO consents (id, user_id, type, version, accepted, accepted_at, ip_address) VALUES ($1,$2,$3,$4,$5,NOW(),$6)',
+      [gid('c'), req.user.id, t, CONSENT_VERSION, accepted !== false, req.ip || '']
+    );
+    if (t === 'datenschutz' && accepted !== false) {
+      await pool.query('UPDATE users SET consent_accepted=true, consent_accepted_at=NOW() WHERE id=$1', [req.user.id]);
+    }
+    await audit(req, 'consent_' + (accepted !== false ? 'accepted' : 'declined'), 'consent', t);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/me/consent/revoke', auth, async (req, res) => {
+  const { type } = req.body;
+  try {
+    await pool.query(
+      'UPDATE consents SET revoked_at=NOW() WHERE user_id=$1 AND type=$2 AND revoked_at IS NULL',
+      [req.user.id, type || 'datenschutz']
+    );
+    if ((type || 'datenschutz') === 'datenschutz') {
+      await pool.query('UPDATE users SET consent_accepted=false WHERE id=$1', [req.user.id]);
+    }
+    await audit(req, 'consent_revoked', 'consent', type || 'datenschutz');
+    res.json({ success: true, message: 'Einwilligung widerrufen. Der Zugriff auf die App ist bis zur erneuten Einwilligung gesperrt.' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, name, email, role, phone, hourly_rate, iban FROM users WHERE id = $1', [req.user.id]);
-    res.json(rows[0]);
+    const { rows } = await pool.query('SELECT id, name, email, role, phone, hourly_rate, iban, consent_accepted, last_login FROM users WHERE id = $1', [req.user.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ ...rows[0], iban: maskIban(rows[0].iban) });
   } catch (e) {
     res.status(500).json({ error: 'Server Fehler' });
   }
@@ -411,7 +619,13 @@ app.get('/api/patients', auth, async (req, res) => {
       params = [`%"${req.user.id}"%`];
     }
     const { rows } = await pool.query(query, params);
-    res.json(rows.map(p => ({ ...p, angehoerige_ids: JSON.parse(p.angehoerige_ids || '[]') })));
+    await audit(req, 'view_patients', 'patient', rows.length + ' Datensätze');
+    res.json(rows.map(p => ({
+      ...p,
+      angehoerige_ids: JSON.parse(p.angehoerige_ids || '[]'),
+      phone: decryptField(p.phone),
+      insurance_number: decryptField(p.insurance_number)
+    })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -425,10 +639,11 @@ app.post('/api/patients', auth, async (req, res) => {
       `INSERT INTO patients (id, name, address, care_level, pflegegrad, betreuer_id, notes, angehoerige_ids, phone, insurance, insurance_number, emergency_contact, birth_date)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [id, name, address || '', pg, pg, betreuer_id || (req.user.role === 'betreuer' ? req.user.id : null), notes || '',
-       JSON.stringify(angehoerige_ids || []), phone || '', insurance || '', insurance_number || '', emergency_contact || '', birth_date || null]
+       JSON.stringify(angehoerige_ids || []), encryptField(phone || ''), insurance || '', encryptField(insurance_number || ''), emergency_contact || '', birth_date || null]
     );
     await getOrCreateFreibetrag(id, new Date().getFullYear());
-    res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]') });
+    await audit(req, 'create_patient', 'patient', id);
+    res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]'), phone: phone || '', insurance_number: insurance_number || '' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -443,10 +658,13 @@ app.patch('/api/patients/:id', auth, async (req, res) => {
        emergency_contact=COALESCE($10,emergency_contact), betreuer_id=COALESCE($11,betreuer_id), birth_date=COALESCE($12,birth_date)
        WHERE id=$13 RETURNING *`,
       [name, address, care_level, pflegegrad, notes, angehoerige_ids ? JSON.stringify(angehoerige_ids) : null,
-       phone, insurance, insurance_number, emergency_contact, betreuer_id, birth_date, req.params.id]
+       phone != null ? encryptField(phone) : null, insurance, insurance_number != null ? encryptField(insurance_number) : null,
+       emergency_contact, betreuer_id, birth_date, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
-    res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]') });
+    await audit(req, 'update_patient', 'patient', req.params.id);
+    res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]'),
+               phone: decryptField(rows[0].phone), insurance_number: decryptField(rows[0].insurance_number) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -505,6 +723,12 @@ app.post('/api/visits', auth, async (req, res) => {
     );
     notifyNewAssignment(rows[0]);
     notifyVisitUpdate(id);
+
+    // KI-Disposition: offene Anfragen vollautomatisch zuweisen (asynchron, blockiert Antwort nicht)
+    if (status === 'anfrage') {
+      setImmediate(() => aiDispatchVisit(id).catch(e => console.error('[KI-Dispatch]', e.message)));
+    }
+
     res.json(parseVisit(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -847,7 +1071,8 @@ app.get('/api/admin/invoices', auth, adminOnly, async (req, res) => {
 // Rechnung automatisch aus Arbeitszeiten erzeugen — Kernstück der Abrechnung
 app.post('/api/admin/invoices/generate', auth, adminOnly, async (req, res) => {
   const { recipient_id, type, period_from, period_to,
-          apply_entlastung = true, apply_verhinderung = false, sonstige_abzuege = 0, notes } = req.body;
+          apply_entlastung = true, apply_verhinderung = false, apply_35a = true,
+          sonstige_abzuege = 0, notes } = req.body;
   if (!recipient_id || !type || !period_from || !period_to) {
     return res.status(400).json({ error: 'recipient_id, type, period_from, period_to erforderlich' });
   }
@@ -912,7 +1137,7 @@ app.post('/api/admin/invoices/generate', auth, adminOnly, async (req, res) => {
 
       // §35a EStG: 20% der verbleibenden Aufwendungen, gedeckelt durch Jahresmaximum (Hinweis, kein Abzug)
       const rest35a = Math.max(0, num(fb.freibetrag_35a_max) - num(fb.freibetrag_35a_used));
-      abz.fb35a = Math.min(Math.round(netto * 20) / 100, rest35a);
+      abz.fb35a = apply_35a ? Math.min(Math.round(netto * 20) / 100, rest35a) : 0;
 
       // Budgets fortschreiben
       await pool.query(`
@@ -922,17 +1147,25 @@ app.post('/api/admin/invoices/generate', auth, adminOnly, async (req, res) => {
         WHERE patient_id=$4 AND year=$5
       `, [abz.entl, abz.vp, abz.fb35a, recipient_id, year]);
 
+      // Passenden Leistungsnachweis verknüpfen (gleicher Klient + Zeitraum)
+      const matchLn = (await pool.query(
+        'SELECT id FROM leistungsnachweise WHERE patient_id=$1 AND period_from=$2::date AND period_to=$3::date LIMIT 1',
+        [recipient_id, period_from, period_to])).rows[0];
+
       const id = gid('inv');
       const invNum = await nextInvoiceNumber();
       const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + (parseInt(settings.zahlungsziel_tage) || 14));
       const { rows } = await pool.query(`
         INSERT INTO invoices (id, invoice_number, type, recipient_id, recipient_name, period_from, period_to,
-          line_items, subtotal, freibetrag_35a, pflegegeld_abzug, betreuungsgeld_abzug, sonstige_abzuege,
-          total_abzuege, total_netto, mwst_satz, mwst_betrag, total_brutto, status, due_date, notes, created_by)
-        VALUES ($1,$2,'kunde',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'entwurf',$18,$19,$20) RETURNING *
+          line_items, subtotal, freibetrag_35a, pflegegeld_abzug, betreuungsgeld_abzug,
+          verhinderungspflege_abzug, entlastungsbetrag_abzug, sonstige_abzuege,
+          total_abzuege, total_netto, mwst_satz, mwst_betrag, total_brutto, status, due_date, notes, created_by, leistungsnachweis_id)
+        VALUES ($1,$2,'kunde',$3,$4,$5,$6,$7,$8,$9,$10,$11,$10,$11,$12,$13,$14,$15,$16,$17,'entwurf',$18,$19,$20,$21) RETURNING *
       `, [id, invNum, recipient_id, recipientName, period_from, period_to,
           JSON.stringify(lineItems), subtotal, abz.fb35a, abz.vp, abz.entl, abz.sonst,
-          totalAbz, netto, mwstSatz, mwst, brutto, dueDate, notes || '', req.user.id]);
+          totalAbz, netto, mwstSatz, mwst, brutto, dueDate, notes || '', req.user.id, matchLn?.id || null]);
+      if (matchLn) await pool.query('UPDATE leistungsnachweise SET invoice_id=$1 WHERE id=$2', [id, matchLn.id]);
+      await audit(req, 'invoice_generated', 'invoice', invNum);
       return res.json({ ...parseInvoice(rows[0]), warnung: entlJahresRest <= 0 && apply_entlastung ? 'Entlastungsbetrag-Budget erschöpft!' : null });
     }
 
@@ -1199,6 +1432,7 @@ async function sendInvoicePdf(req, res, requireAdmin) {
       addr = p?.address || '';
     }
 
+    await audit(req, 'invoice_pdf_download', 'invoice', inv.invoice_number);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${inv.invoice_number}.pdf"`);
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -1286,6 +1520,18 @@ app.get('/api/admin/buchhaltung/monat/:monat', auth, adminOnly, async (req, res)
       pool.query(`SELECT COUNT(*) as n, COALESCE(SUM(total_brutto),0) as s FROM invoices
                   WHERE type='kunde' AND to_char(created_at,'YYYY-MM') = $1 AND status != 'storniert'`, [monat])
     ]);
+    const [offen, bezahlt, betreuerStunden, settings] = await Promise.all([
+      pool.query(`SELECT COUNT(*) as n FROM invoices WHERE type='kunde' AND status NOT IN ('bezahlt','storniert','entwurf')`),
+      pool.query(`SELECT COUNT(*) as n FROM invoices WHERE type='kunde' AND status='bezahlt' AND to_char(paid_at,'YYYY-MM') = $1`, [monat]),
+      pool.query(`
+        SELECT u.id, u.name, u.hourly_rate,
+          ROUND(SUM(EXTRACT(EPOCH FROM (v.actual_end - v.actual_start))/3600.0)::numeric, 2) as stunden
+        FROM visits v JOIN users u ON v.betreuer_id = u.id
+        WHERE v.actual_end IS NOT NULL AND to_char(v.actual_end,'YYYY-MM') = $1
+        GROUP BY u.id, u.name, u.hourly_rate ORDER BY u.name`, [monat]),
+      getSettings()
+    ]);
+    const defaultRate = num(settings.default_hourly_rate);
     const ein = num(einnahmen.rows[0].s);
     const aus = num(ausgabenInv.rows[0].s) + num(ausgabenExp.rows[0].s);
     res.json({
@@ -1295,8 +1541,14 @@ app.get('/api/admin/buchhaltung/monat/:monat', auth, adminOnly, async (req, res)
       ausgaben_sonstige: num(ausgabenExp.rows[0].s),
       ausgaben: aus,
       ergebnis: Math.round((ein - aus) * 100) / 100,
+      offene_rechnungen: parseInt(offen.rows[0].n),
+      bezahlte_rechnungen: parseInt(bezahlt.rows[0].n),
       rechnungen_anzahl: parseInt(rechnungen.rows[0].n),
-      rechnungen_volumen: num(rechnungen.rows[0].s)
+      rechnungen_volumen: num(rechnungen.rows[0].s),
+      betreuer: betreuerStunden.rows.map(b => ({
+        id: b.id, name: b.name, stunden: num(b.stunden),
+        auszahlung: Math.round(num(b.stunden) * (num(b.hourly_rate) || defaultRate) * 100) / 100
+      }))
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1354,6 +1606,7 @@ app.get('/api/admin/buchhaltung/export/csv', auth, adminOnly, async (req, res) =
       '', '', '-' + num(e.amount).toFixed(2).replace('.', ','), 'gebucht'
     ].join(';')));
 
+    await audit(req, 'export_csv', 'buchhaltung', `${von || ''}-${bis || ''}`);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="curavio_buchhaltung.csv"');
     res.send('﻿' + lines.join('\r\n'));
@@ -1378,6 +1631,7 @@ app.get('/api/admin/buchhaltung/export/datev', auth, adminOnly, async (req, res)
         lines.push(`${betrag};H;70000;4120;${dd};${i.invoice_number};"Honorar ${i.recipient_name || ''}"`);
       }
     });
+    await audit(req, 'export_datev', 'buchhaltung', `${von || ''}-${bis || ''}`);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="curavio_datev.csv"');
     res.send('﻿' + lines.join('\r\n'));
@@ -1482,23 +1736,29 @@ app.get('/api/admin/betreuer', auth, adminOnly, async (req, res) => {
     `);
     res.json(rows.map(r => ({
       ...r,
+      iban: maskIban(r.iban), // DSGVO: IBAN nur maskiert in Listen
       qualifications: (() => { try { return JSON.parse(r.qualifications || '[]'); } catch { return []; } })(),
       auslastung: Math.min(100, Math.round(num(r.stunden_woche) / 40 * 100))
     })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Betreuer-Profil bearbeiten (Stundensatz, Qualifikationen, IBAN ...)
+// Betreuer-Profil bearbeiten (Stundensatz, Qualifikationen, IBAN verschlüsselt ...)
 app.patch('/api/admin/betreuer/:id', auth, adminOnly, async (req, res) => {
-  const { name, phone, hourly_rate, qualifications, active, iban, tax_id } = req.body;
+  const { name, phone, hourly_rate, qualifications, active, iban, tax_id, shift_start, max_hours_per_day, address } = req.body;
   try {
+    // Maskierte IBAN aus dem Frontend nicht zurückschreiben
+    const ibanVal = (iban != null && !String(iban).startsWith('••••')) ? encryptField(iban) : null;
     const { rows } = await pool.query(`
       UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone), hourly_rate=COALESCE($3,hourly_rate),
-        qualifications=COALESCE($4,qualifications), active=COALESCE($5,active), iban=COALESCE($6,iban), tax_id=COALESCE($7,tax_id)
-      WHERE id=$8 AND role='betreuer' RETURNING id, name, email, phone, hourly_rate, qualifications, active, iban, tax_id
-    `, [name, phone, hourly_rate, qualifications ? JSON.stringify(qualifications) : null, active, iban, tax_id, req.params.id]);
+        qualifications=COALESCE($4,qualifications), active=COALESCE($5,active), iban=COALESCE($6,iban), tax_id=COALESCE($7,tax_id),
+        shift_start=COALESCE($8,shift_start), max_hours_per_day=COALESCE($9,max_hours_per_day), address=COALESCE($10,address)
+      WHERE id=$11 AND role='betreuer' RETURNING id, name, email, phone, hourly_rate, qualifications, active, iban, tax_id, shift_start, max_hours_per_day, address
+    `, [name, phone, hourly_rate, qualifications ? JSON.stringify(qualifications) : null, active, ibanVal, tax_id,
+        shift_start, max_hours_per_day, address, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Betreuer nicht gefunden' });
-    res.json(rows[0]);
+    await audit(req, 'update_betreuer_profile', 'user', req.params.id);
+    res.json({ ...rows[0], iban: maskIban(rows[0].iban) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1597,6 +1857,736 @@ app.put('/api/admin/settings', auth, adminOnly, async (req, res) => {
       await pool.query('INSERT INTO settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2', [k, String(v)]);
     }
     res.json(await getSettings());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  DSGVO: Auskunft (Art. 15), Löschung (Art. 17), Portabilität (Art. 20)
+// ═══════════════════════════════════════════════════════════════
+
+async function collectUserData(userId) {
+  const user = (await pool.query('SELECT id, name, email, role, phone, address, hourly_rate, created_at, last_login, consent_accepted FROM users WHERE id=$1', [userId])).rows[0];
+  if (!user) return null;
+  const [patients, visits, reports, messages, consents, invoices] = await Promise.all([
+    pool.query("SELECT * FROM patients WHERE angehoerige_ids LIKE $1 OR betreuer_id = $2", [`%"${userId}"%`, userId]),
+    pool.query('SELECT * FROM visits WHERE betreuer_id=$1 OR patient_id IN (SELECT id FROM patients WHERE angehoerige_ids LIKE $2)', [userId, `%"${userId}"%`]),
+    pool.query('SELECT * FROM reports WHERE betreuer_id=$1', [userId]),
+    pool.query('SELECT * FROM messages WHERE sender_id=$1', [userId]),
+    pool.query('SELECT * FROM consents WHERE user_id=$1', [userId]),
+    pool.query("SELECT * FROM invoices WHERE recipient_id=$1", [userId])
+  ]);
+  return {
+    exportiert_am: new Date().toISOString(),
+    hinweis: 'Datenauskunft gemäß Art. 15 / Art. 20 DSGVO',
+    benutzer: user,
+    patienten: patients.rows.map(p => ({ ...p, phone: decryptField(p.phone), insurance_number: decryptField(p.insurance_number) })),
+    besuche: visits.rows,
+    berichte: reports.rows,
+    nachrichten: messages.rows,
+    einwilligungen: consents.rows,
+    rechnungen: invoices.rows
+  };
+}
+
+app.get('/api/me/dsgvo/export', auth, async (req, res) => {
+  try {
+    const data = await collectUserData(req.user.id);
+    await audit(req, 'dsgvo_self_export', 'user', req.user.id);
+    res.setHeader('Content-Disposition', `attachment; filename="curavio_datenauskunft_${req.user.id}.json"`);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/dsgvo/export/:user_id', auth, adminOnly, async (req, res) => {
+  try {
+    const data = await collectUserData(req.params.user_id);
+    if (!data) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    await audit(req, 'dsgvo_admin_export', 'user', req.params.user_id);
+    res.setHeader('Content-Disposition', `attachment; filename="curavio_datenauskunft_${req.params.user_id}.json"`);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Pseudonymisierung statt hartem Löschen: Rechnungsdaten 10 Jahre Aufbewahrung (§257 HGB)
+app.post('/api/admin/dsgvo/delete/:user_id', auth, adminOnly, async (req, res) => {
+  const uid = req.params.user_id;
+  try {
+    const user = (await pool.query('SELECT * FROM users WHERE id=$1', [uid])).rows[0];
+    if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    if (user.role === 'admin') return res.status(400).json({ error: 'Admin-Konten können nicht gelöscht werden' });
+
+    await pool.query(`
+      UPDATE users SET name='Gelöschter Nutzer', email=$1, password='!gelöscht!', phone='', address='',
+        iban='', tax_id='', qualifications='[]', active=false, consent_accepted=false,
+        home_lat=NULL, home_lng=NULL
+      WHERE id=$2
+    `, [`deleted_${uid}@curavio.de`, uid]);
+    // Gesundheitsdaten löschen: Berichte + Chat des Nutzers
+    await pool.query("UPDATE reports SET content='[gelöscht auf Nutzerwunsch]', ai_summary='' WHERE betreuer_id=$1", [uid]);
+    await pool.query("UPDATE messages SET content='[gelöscht]', sender_name='Gelöschter Nutzer' WHERE sender_id=$1", [uid]);
+    await audit(req, 'dsgvo_pseudonymized', 'user', uid);
+    res.json({ success: true, message: 'Nutzer pseudonymisiert. Rechnungsdaten bleiben gemäß §257 HGB (10 Jahre) erhalten.' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/audit-log', auth, adminOnly, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 300');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  LEISTUNGSNACHWEISE — digital signiert (eIDAS: einfache el. Signatur)
+// ═══════════════════════════════════════════════════════════════
+
+async function nextLnNumber() {
+  const year = new Date().getFullYear();
+  const { rows } = await pool.query(
+    "SELECT ln_number FROM leistungsnachweise WHERE ln_number LIKE $1 ORDER BY ln_number DESC LIMIT 1", [`LN-${year}-%`]);
+  let n = 1;
+  if (rows[0]) n = parseInt(rows[0].ln_number.split('-')[2]) + 1;
+  return `LN-${year}-${String(n).padStart(3, '0')}`;
+}
+
+const parseLn = (ln) => ({
+  ...ln,
+  leistungen: (() => { try { return JSON.parse(ln.leistungen || '[]'); } catch { return []; } })(),
+  // Signatur-Bilder nicht in Listen mitschicken (Payload)
+  signature_client: ln.signature_client ? true : null,
+  signature_betreuer: ln.signature_betreuer ? true : null
+});
+
+async function generateLn(patientId, periodFrom, periodTo, createdByReq) {
+  const pat = (await pool.query('SELECT * FROM patients WHERE id=$1', [patientId])).rows[0];
+  if (!pat) throw new Error('Patient nicht gefunden');
+  const { rows: visits } = await pool.query(`
+    SELECT v.*, u.name as betreuer_name,
+      ROUND(EXTRACT(EPOCH FROM (actual_end - actual_start))/3600.0, 2) as stunden
+    FROM visits v LEFT JOIN users u ON v.betreuer_id = u.id
+    WHERE v.patient_id = $1 AND v.actual_end IS NOT NULL
+      AND v.actual_end::date >= $2::date AND v.actual_end::date <= $3::date
+    ORDER BY v.actual_end ASC
+  `, [patientId, periodFrom, periodTo]);
+  if (!visits.length) return null;
+
+  const leistungen = visits.map(v => ({
+    datum: v.actual_end.toISOString().split('T')[0],
+    leistung: v.service || (() => { try { return JSON.parse(v.services || '[]')[0]; } catch { return ''; } })() || 'Alltagsbegleitung',
+    stunden: num(v.stunden),
+    betreuer: v.betreuer_name || '',
+    betreuer_id: v.betreuer_id,
+    visit_id: v.id
+  }));
+  // Hauptbetreuer = häufigster Betreuer im Zeitraum
+  const counts = {};
+  visits.forEach(v => { if (v.betreuer_id) counts[v.betreuer_id] = (counts[v.betreuer_id] || 0) + 1; });
+  const mainBetreuer = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  if (!mainBetreuer) return null;
+
+  const id = gid('ln');
+  const lnNum = await nextLnNumber();
+  const { rows } = await pool.query(`
+    INSERT INTO leistungsnachweise (id, ln_number, patient_id, betreuer_id, period_from, period_to, leistungen, krankenkasse, status)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ausstehend') RETURNING *
+  `, [id, lnNum, patientId, mainBetreuer, periodFrom, periodTo, JSON.stringify(leistungen), pat.insurance || '']);
+  if (createdByReq) await audit(createdByReq, 'leistungsnachweis_created', 'leistungsnachweis', id);
+  return rows[0];
+}
+
+app.post('/api/admin/leistungsnachweise/generate', auth, adminOnly, async (req, res) => {
+  const { patient_id, period_from, period_to } = req.body;
+  if (!patient_id || !period_from || !period_to) return res.status(400).json({ error: 'patient_id, period_from, period_to erforderlich' });
+  try {
+    const ln = await generateLn(patient_id, period_from, period_to, req);
+    if (!ln) return res.status(400).json({ error: 'Keine abgeschlossenen Besuche im Zeitraum' });
+    wsBroadcast({ type: 'nachweis_created', id: ln.id });
+    res.json(parseLn(ln));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Bulk: alle Klienten für einen Monat
+app.post('/api/admin/leistungsnachweise/bulk-generate', auth, adminOnly, async (req, res) => {
+  const { monat } = req.body; // YYYY-MM
+  if (!monat) return res.status(400).json({ error: 'monat (YYYY-MM) erforderlich' });
+  try {
+    const from = monat + '-01';
+    const toD = new Date(parseInt(monat.substring(0, 4)), parseInt(monat.substring(5, 7)), 0);
+    const to = `${toD.getFullYear()}-${String(toD.getMonth() + 1).padStart(2, '0')}-${String(toD.getDate()).padStart(2, '0')}`;
+    const { rows: pats } = await pool.query('SELECT id, name FROM patients');
+    const created = [], skipped = [];
+    for (const p of pats) {
+      // Kein Duplikat für denselben Zeitraum
+      const exists = (await pool.query(
+        'SELECT 1 FROM leistungsnachweise WHERE patient_id=$1 AND period_from=$2::date AND period_to=$3::date', [p.id, from, to])).rows[0];
+      if (exists) { skipped.push(p.name + ' (existiert)'); continue; }
+      const ln = await generateLn(p.id, from, to, req);
+      if (ln) created.push(ln.ln_number + ' – ' + p.name);
+      else skipped.push(p.name + ' (keine Besuche)');
+    }
+    res.json({ created, skipped });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/leistungsnachweise', auth, adminOnly, async (req, res) => {
+  const { status, patient_id, betreuer_id, monat } = req.query;
+  try {
+    const conds = [], params = [];
+    if (status) { params.push(status); conds.push(`ln.status = $${params.length}`); }
+    if (patient_id) { params.push(patient_id); conds.push(`ln.patient_id = $${params.length}`); }
+    if (betreuer_id) { params.push(betreuer_id); conds.push(`ln.betreuer_id = $${params.length}`); }
+    if (monat) { params.push(monat); conds.push(`to_char(ln.period_from,'YYYY-MM') = $${params.length}`); }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const { rows } = await pool.query(`
+      SELECT ln.*, p.name as patient_name, u.name as betreuer_name
+      FROM leistungsnachweise ln
+      LEFT JOIN patients p ON ln.patient_id = p.id LEFT JOIN users u ON ln.betreuer_id = u.id
+      ${where} ORDER BY ln.created_at DESC LIMIT 300
+    `, params);
+    res.json(rows.map(parseLn));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Eigene Nachweise (Klient: über Patienten; Betreuer: eigene)
+app.get('/api/me/leistungsnachweise', auth, async (req, res) => {
+  try {
+    let rows;
+    if (req.user.role === 'betreuer') {
+      rows = (await pool.query(`
+        SELECT ln.*, p.name as patient_name, u.name as betreuer_name FROM leistungsnachweise ln
+        LEFT JOIN patients p ON ln.patient_id = p.id LEFT JOIN users u ON ln.betreuer_id = u.id
+        WHERE ln.betreuer_id = $1 ORDER BY ln.created_at DESC
+      `, [req.user.id])).rows;
+    } else {
+      rows = (await pool.query(`
+        SELECT ln.*, p.name as patient_name, u.name as betreuer_name FROM leistungsnachweise ln
+        JOIN patients p ON ln.patient_id = p.id LEFT JOIN users u ON ln.betreuer_id = u.id
+        WHERE p.angehoerige_ids LIKE $1 ORDER BY ln.created_at DESC
+      `, [`%"${req.user.id}"%`])).rows;
+    }
+    res.json(rows.map(parseLn));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Signatur Klient/Angehöriger
+app.patch('/api/leistungsnachweise/:id/sign-client', auth, async (req, res) => {
+  const { signature, signed_by } = req.body;
+  if (!signature || !signature.startsWith('data:image/')) return res.status(400).json({ error: 'Signatur (Base64-PNG) erforderlich' });
+  try {
+    const ln = (await pool.query('SELECT * FROM leistungsnachweise WHERE id=$1', [req.params.id])).rows[0];
+    if (!ln) return res.status(404).json({ error: 'Nicht gefunden' });
+    if (req.user.role !== 'admin' && !await isAngehoerigerOf(req.user.id, ln.patient_id)) {
+      return res.status(403).json({ error: 'Keine Berechtigung' });
+    }
+    if (ln.signature_client) return res.status(400).json({ error: 'Bereits unterschrieben' });
+    const { rows } = await pool.query(`
+      UPDATE leistungsnachweise SET signature_client=$1, signed_by_client=$2, signed_at_client=NOW(),
+        signed_ip_client=$3, status = CASE WHEN signature_betreuer IS NOT NULL THEN 'vollstaendig' ELSE 'klient_unterschrieben' END
+      WHERE id=$4 RETURNING *
+    `, [signature, signed_by || req.user.name || '', req.ip || '', req.params.id]);
+    await audit(req, 'leistungsnachweis_signed_client', 'leistungsnachweis', req.params.id);
+    wsBroadcast({ type: 'nachweis_signed', id: req.params.id, by: 'client' });
+    res.json(parseLn(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Signatur Betreuer
+app.patch('/api/leistungsnachweise/:id/sign-betreuer', auth, async (req, res) => {
+  const { signature, signed_by } = req.body;
+  if (!signature || !signature.startsWith('data:image/')) return res.status(400).json({ error: 'Signatur (Base64-PNG) erforderlich' });
+  try {
+    const ln = (await pool.query('SELECT * FROM leistungsnachweise WHERE id=$1', [req.params.id])).rows[0];
+    if (!ln) return res.status(404).json({ error: 'Nicht gefunden' });
+    if (req.user.role !== 'admin' && ln.betreuer_id !== req.user.id) {
+      return res.status(403).json({ error: 'Keine Berechtigung' });
+    }
+    if (ln.signature_betreuer) return res.status(400).json({ error: 'Bereits unterschrieben' });
+    const { rows } = await pool.query(`
+      UPDATE leistungsnachweise SET signature_betreuer=$1, signed_by_betreuer=$2, signed_at_betreuer=NOW(),
+        status = CASE WHEN signature_client IS NOT NULL THEN 'vollstaendig' ELSE status END
+      WHERE id=$3 RETURNING *
+    `, [signature, signed_by || req.user.name || '', req.params.id]);
+    await audit(req, 'leistungsnachweis_signed_betreuer', 'leistungsnachweis', req.params.id);
+    wsBroadcast({ type: 'nachweis_signed', id: req.params.id, by: 'betreuer' });
+    res.json(parseLn(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/leistungsnachweise/:id/einreichen', auth, adminOnly, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      UPDATE leistungsnachweise SET status='eingereicht', eingereicht_at=NOW()
+      WHERE id=$1 AND status='vollstaendig' RETURNING *
+    `, [req.params.id]);
+    if (!rows[0]) return res.status(400).json({ error: 'Nur vollständig signierte Nachweise können eingereicht werden' });
+    await audit(req, 'leistungsnachweis_eingereicht', 'leistungsnachweis', req.params.id);
+    res.json(parseLn(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PDF mit beiden Unterschriften
+app.get('/api/leistungsnachweise/:id/pdf', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT ln.*, p.name as patient_name, p.address as patient_address, p.pflegegrad, p.birth_date,
+             p.insurance, p.insurance_number, p.angehoerige_ids
+      FROM leistungsnachweise ln LEFT JOIN patients p ON ln.patient_id = p.id WHERE ln.id = $1
+    `, [req.params.id]);
+    const ln = rows[0];
+    if (!ln) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    // Zugriff: Admin, zugewiesener Betreuer, Angehörige des Patienten
+    const allowed = req.user.role === 'admin'
+      || ln.betreuer_id === req.user.id
+      || (JSON.parse(ln.angehoerige_ids || '[]')).includes(req.user.id);
+    if (!allowed) return res.status(403).json({ error: 'Keine Berechtigung' });
+
+    await audit(req, 'leistungsnachweis_pdf_download', 'leistungsnachweis', req.params.id);
+    const settings = await getSettings();
+    const leistungen = JSON.parse(ln.leistungen || '[]');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${ln.ln_number || ln.id}.pdf"`);
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    doc.pipe(res);
+
+    // Kopf
+    doc.fillColor('#1C3A2A').fontSize(20).font('Helvetica-Bold').text('LEISTUNGSNACHWEIS', 50, 50);
+    doc.fontSize(9).font('Helvetica').fillColor('#666')
+       .text(settings.firma_name + ' · ' + settings.firma_adresse, 50, 75);
+    doc.fontSize(10).fillColor('#333')
+       .text('Zeitraum: ' + deDate(ln.period_from) + ' – ' + deDate(ln.period_to), 360, 52, { width: 185, align: 'right' })
+       .text('LN-Nummer: ' + (ln.ln_number || ln.id), 360, 66, { width: 185, align: 'right' });
+    doc.moveTo(50, 95).lineTo(545, 95).strokeColor('#C47B3A').lineWidth(1.5).stroke();
+
+    // Klient
+    let y = 112;
+    doc.fontSize(10).fillColor('#000').font('Helvetica');
+    doc.text(`Klient: ${ln.patient_name || ''}${ln.birth_date ? ', geb. ' + deDate(ln.birth_date) : ''}`, 50, y); y += 15;
+    doc.text(`Adresse: ${ln.patient_address || '–'}`, 50, y); y += 15;
+    doc.text(`Pflegegrad: ${ln.pflegegrad || '–'}`, 50, y); y += 15;
+    doc.text(`Krankenkasse: ${ln.insurance || ln.krankenkasse || '–'}${ln.insurance_number ? ', Nr. ' + decryptField(ln.insurance_number) : ''}`, 50, y); y += 24;
+
+    // Tabelle
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#333');
+    doc.text('Datum', 50, y).text('Leistung', 130, y, { width: 220 }).text('Betreuer', 360, y, { width: 110 }).text('Std.', 480, y, { width: 65, align: 'right' });
+    y += 13;
+    doc.moveTo(50, y).lineTo(545, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 7;
+    doc.font('Helvetica').fillColor('#000');
+    let total = 0;
+    leistungen.forEach(l => {
+      if (y > 640) { doc.addPage(); y = 60; }
+      total += num(l.stunden);
+      doc.text(deDate(l.datum), 50, y).text(String(l.leistung || '').substring(0, 50), 130, y, { width: 220 })
+         .text(String(l.betreuer || ''), 360, y, { width: 110 })
+         .text(num(l.stunden).toFixed(1).replace('.', ','), 480, y, { width: 65, align: 'right' });
+      y += 15;
+    });
+    doc.moveTo(50, y).lineTo(545, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 8;
+    doc.font('Helvetica-Bold').text('Gesamt:', 360, y).text(total.toFixed(1).replace('.', ',') + ' Std.', 480, y, { width: 65, align: 'right' });
+    y += 30;
+
+    // Unterschriften
+    if (y > 560) { doc.addPage(); y = 60; }
+    doc.font('Helvetica').fontSize(10).fillColor('#333')
+       .text('Ich bestätige die Erbringung der o.g. Leistungen:', 50, y);
+    y += 22;
+    doc.fontSize(9).text('Klient/Angehöriger:', 50, y).text('Betreuungskraft:', 320, y);
+    y += 14;
+    const sigH = 55;
+    const drawSig = (dataUrl, x) => {
+      try {
+        const b64 = dataUrl.split(',')[1];
+        doc.image(Buffer.from(b64, 'base64'), x, y, { fit: [200, sigH] });
+      } catch { doc.fontSize(8).fillColor('#999').text('[Signatur nicht darstellbar]', x, y + 20); }
+    };
+    if (ln.signature_client) drawSig(ln.signature_client, 50);
+    else doc.fontSize(8).fillColor('#999').text('— noch nicht unterschrieben —', 50, y + 22);
+    if (ln.signature_betreuer) drawSig(ln.signature_betreuer, 320);
+    else doc.fontSize(8).fillColor('#999').text('— noch nicht unterschrieben —', 320, y + 22);
+    y += sigH + 6;
+    doc.moveTo(50, y).lineTo(250, y).strokeColor('#999').lineWidth(0.5).stroke();
+    doc.moveTo(320, y).lineTo(520, y).stroke();
+    y += 5;
+    doc.fontSize(9).fillColor('#000')
+       .text(ln.signed_by_client || '', 50, y, { width: 200 })
+       .text(ln.signed_by_betreuer || '', 320, y, { width: 200 });
+    y += 13;
+    doc.fontSize(8).fillColor('#666')
+       .text(ln.signed_at_client ? 'Datum: ' + deDate(ln.signed_at_client) : '', 50, y, { width: 200 })
+       .text(ln.signed_at_betreuer ? 'Datum: ' + deDate(ln.signed_at_betreuer) : '', 320, y, { width: 200 });
+    y += 28;
+
+    // Rechtsfooter
+    if (ln.signature_client || ln.signature_betreuer) {
+      doc.fontSize(7.5).fillColor('#999')
+         .text(`Dieser Nachweis wurde digital signiert. Signatur-ID: ${ln.ln_number || ln.id}`, 50, y)
+         .text('Rechtsgültig gemäß eIDAS-Verordnung (einfache elektronische Signatur).', 50, y + 10)
+         .text(`IP: ${ln.signed_ip_client || '–'} | Zeitstempel: ${ln.signed_at_client ? new Date(ln.signed_at_client).toISOString() : '–'}`, 50, y + 20);
+    }
+    doc.end();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  ROUTENPLANUNG: Geocoding + Tagesrouten + Optimierung
+// ═══════════════════════════════════════════════════════════════
+
+function httpJson(method, urlStr, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const data = body ? JSON.stringify(body) : null;
+    const r = https.request({
+      hostname: u.hostname, path: u.pathname + u.search, method,
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Curavio/1.0 (Pflegedienst-Software)', ...headers,
+                 ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) }
+    }, (res2) => {
+      let buf = '';
+      res2.on('data', d => buf += d);
+      res2.on('end', () => { try { resolve(JSON.parse(buf)); } catch { reject(new Error('Ungültige Antwort: ' + buf.substring(0, 120))); } });
+    });
+    r.on('error', reject);
+    r.setTimeout(10000, () => { r.destroy(); reject(new Error('Timeout')); });
+    if (data) r.write(data);
+    r.end();
+  });
+}
+
+// Geocoding: ORS bevorzugt, sonst OSM Nominatim (DSGVO: nur Adresse wird übertragen, keine Namen)
+async function geocodeAddress(address) {
+  if (!address) return null;
+  try {
+    if (process.env.ORS_API_KEY) {
+      const j = await httpJson('GET', `https://api.openrouteservice.org/geocode/search?api_key=${process.env.ORS_API_KEY}&text=${encodeURIComponent(address)}&boundary.country=DE&size=1`);
+      const c = j?.features?.[0]?.geometry?.coordinates;
+      if (c) return { lat: c[1], lng: c[0] };
+    }
+    const j = await httpJson('GET', `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=de&q=${encodeURIComponent(address)}`);
+    if (j?.[0]) return { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) };
+  } catch { /* unten null */ }
+  return null;
+}
+
+const haversineKm = (a, b) => {
+  if (!a || !b || a.lat == null || b.lat == null) return null;
+  const R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(h));
+};
+// Fahrzeit-Schätzung: Luftlinie × 1.4 Straßenfaktor bei Ø 30 km/h Stadtverkehr
+const travelMinEstimate = (a, b) => {
+  const km = haversineKm(a, b);
+  return km == null ? null : Math.round(km * 1.4 / 30 * 60);
+};
+
+app.post('/api/admin/geocode/:patient_id', auth, adminOnly, async (req, res) => {
+  try {
+    const p = (await pool.query('SELECT id, address FROM patients WHERE id=$1', [req.params.patient_id])).rows[0];
+    if (!p) return res.status(404).json({ error: 'Patient nicht gefunden' });
+    const c = await geocodeAddress(p.address);
+    if (!c) return res.status(400).json({ error: 'Adresse konnte nicht geocodiert werden: ' + p.address });
+    await pool.query('UPDATE patients SET lat=$1, lng=$2, address_geocoded=true WHERE id=$3', [c.lat, c.lng, p.id]);
+    res.json({ id: p.id, ...c });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/geocode/all', auth, adminOnly, async (req, res) => {
+  try {
+    const { rows: pats } = await pool.query("SELECT id, name, address FROM patients WHERE address_geocoded IS NOT TRUE AND address != ''");
+    const ok = [], failed = [];
+    for (const p of pats) {
+      const c = await geocodeAddress(p.address);
+      if (c) { await pool.query('UPDATE patients SET lat=$1, lng=$2, address_geocoded=true WHERE id=$3', [c.lat, c.lng, p.id]); ok.push(p.name); }
+      else failed.push(p.name);
+      await new Promise(r => setTimeout(r, 1500)); // Nominatim Rate-Limit: 1 Req/1.5s
+    }
+    // Betreuer-Heimatadressen gleich mit
+    const { rows: betr } = await pool.query("SELECT id, name, address FROM users WHERE role='betreuer' AND home_lat IS NULL AND address != ''");
+    for (const b of betr) {
+      const c = await geocodeAddress(b.address);
+      if (c) { await pool.query('UPDATE users SET home_lat=$1, home_lng=$2 WHERE id=$3', [c.lat, c.lng, b.id]); ok.push(b.name + ' (Betreuer)'); }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    res.json({ geocoded: ok, fehlgeschlagen: failed });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Tagesroute eines Betreuers mit Koordinaten + Reisezeiten
+async function buildDayRoute(betreuerId, date) {
+  const betr = (await pool.query('SELECT id, name, home_lat, home_lng, shift_start, max_hours_per_day FROM users WHERE id=$1', [betreuerId])).rows[0];
+  const { rows: visits } = await pool.query(`
+    SELECT v.*, p.name as patient_name, p.address as patient_address, p.lat, p.lng, p.preferred_time_from, p.preferred_time_to
+    FROM visits v JOIN patients p ON v.patient_id = p.id
+    WHERE v.betreuer_id = $1 AND v.scheduled_at::date = $2::date
+      AND v.status NOT IN ('abgelehnt','storniert')
+    ORDER BY v.scheduled_at ASC
+  `, [betreuerId, date]);
+  const stops = visits.map(v => ({
+    visit_id: v.id, patient_id: v.patient_id, patient_name: v.patient_name,
+    address: v.patient_address, lat: v.lat != null ? parseFloat(v.lat) : null, lng: v.lng != null ? parseFloat(v.lng) : null,
+    scheduled_at: v.scheduled_at, duration_min: v.duration_min || 60,
+    service: v.service || '', status: v.status,
+    preferred_time_from: v.preferred_time_from, preferred_time_to: v.preferred_time_to
+  }));
+  // Reisezeiten zwischen aufeinanderfolgenden Stopps
+  const home = betr?.home_lat != null ? { lat: parseFloat(betr.home_lat), lng: parseFloat(betr.home_lng) } : null;
+  let prev = home;
+  for (const s of stops) {
+    const here = s.lat != null ? { lat: s.lat, lng: s.lng } : null;
+    s.travel_min_from_prev = (prev && here) ? travelMinEstimate(prev, here) : null;
+    s.km_from_prev = (prev && here) ? Math.round((haversineKm(prev, here) || 0) * 1.4 * 10) / 10 : null;
+    if (here) prev = here;
+    // Warnung: Reisezeit + Besuch passt nicht in Slot zum nächsten Termin
+  }
+  for (let i = 0; i < stops.length - 1; i++) {
+    const endThis = new Date(stops[i].scheduled_at).getTime() + stops[i].duration_min * 60000;
+    const startNext = new Date(stops[i + 1].scheduled_at).getTime();
+    const travel = (stops[i + 1].travel_min_from_prev || 0) * 60000;
+    stops[i + 1].zeitkonflikt = endThis + travel > startNext;
+  }
+  return { betreuer: betr ? { id: betr.id, name: betr.name, home_lat: betr.home_lat, home_lng: betr.home_lng, shift_start: betr.shift_start } : null, date, stops };
+}
+
+app.get('/api/admin/route/:betreuer_id/:date', auth, adminOnly, async (req, res) => {
+  try { res.json(await buildDayRoute(req.params.betreuer_id, req.params.date)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Optimierte Reihenfolge: Nearest Neighbor ab Betreuer-Heimat (oder erstem Stopp)
+app.post('/api/admin/route/optimize', auth, adminOnly, async (req, res) => {
+  const { betreuer_id, date } = req.body;
+  if (!betreuer_id || !date) return res.status(400).json({ error: 'betreuer_id und date erforderlich' });
+  try {
+    const route = await buildDayRoute(betreuer_id, date);
+    const geocoded = route.stops.filter(s => s.lat != null);
+    if (geocoded.length < 2) return res.status(400).json({ error: 'Zu wenige geocodierte Stopps (erst Geocoding ausführen)' });
+
+    const start = route.betreuer?.home_lat != null
+      ? { lat: parseFloat(route.betreuer.home_lat), lng: parseFloat(route.betreuer.home_lng) }
+      : { lat: geocoded[0].lat, lng: geocoded[0].lng };
+
+    const remaining = [...geocoded];
+    const ordered = [];
+    let cur = start;
+    while (remaining.length) {
+      remaining.sort((a, b) => (haversineKm(cur, a) || 1e9) - (haversineKm(cur, b) || 1e9));
+      const next = remaining.shift();
+      ordered.push(next);
+      cur = { lat: next.lat, lng: next.lng };
+    }
+    // Neue Zeiten: ab Schichtstart bzw. erster geplanter Zeit
+    const dayStart = new Date(date + 'T' + (route.betreuer?.shift_start || '08:00'));
+    const firstPlanned = new Date(Math.min(...route.stops.map(s => new Date(s.scheduled_at).getTime())));
+    let t = isNaN(dayStart) ? firstPlanned : new Date(Math.max(dayStart.getTime(), 0) === 0 ? firstPlanned : dayStart);
+    if (isNaN(t)) t = firstPlanned;
+    let prev = start;
+    const plan = ordered.map(s => {
+      const travel = travelMinEstimate(prev, { lat: s.lat, lng: s.lng }) || 0;
+      t = new Date(t.getTime() + travel * 60000);
+      // Wunschzeitfenster respektieren (frühestens preferred_time_from)
+      if (s.preferred_time_from) {
+        const pref = new Date(date + 'T' + s.preferred_time_from);
+        if (!isNaN(pref) && t < pref) t = pref;
+      }
+      const entry = {
+        visit_id: s.visit_id, patient_name: s.patient_name,
+        old_time: s.scheduled_at, new_time: t.toISOString(),
+        travel_min: travel
+      };
+      t = new Date(t.getTime() + s.duration_min * 60000);
+      prev = { lat: s.lat, lng: s.lng };
+      return entry;
+    });
+    res.json({ betreuer_id, date, plan });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Optimierte Zeiten übernehmen + Benachrichtigungen bei Δ > 15 Min.
+app.patch('/api/admin/route/apply', auth, adminOnly, async (req, res) => {
+  const { changes } = req.body; // [{visit_id, new_time}]
+  if (!Array.isArray(changes) || !changes.length) return res.status(400).json({ error: 'changes[] erforderlich' });
+  try {
+    const applied = [];
+    for (const c of changes) {
+      const old = (await pool.query('SELECT scheduled_at, betreuer_id, patient_id FROM visits WHERE id=$1', [c.visit_id])).rows[0];
+      if (!old) continue;
+      await pool.query('UPDATE visits SET scheduled_at=$1 WHERE id=$2', [c.new_time, c.visit_id]);
+      const deltaMin = Math.abs(new Date(c.new_time) - new Date(old.scheduled_at)) / 60000;
+      applied.push({ visit_id: c.visit_id, delta_min: Math.round(deltaMin) });
+      if (deltaMin > 15) {
+        wsBroadcast({ type: 'route_update', visit_id: c.visit_id, new_time: c.new_time, old_time: old.scheduled_at },
+          ws => ws.userId === old.betreuer_id || ws.userRole === 'admin');
+        wsBroadcast({ type: 'visit_rescheduled', visit_id: c.visit_id, new_time: c.new_time, patient_id: old.patient_id },
+          ws => ws.userRole === 'angehoeriger');
+      }
+    }
+    await audit(req, 'route_applied', 'route', applied.length + ' Besuche');
+    notifyVisitUpdate('route');
+    res.json({ applied });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  KI-DISPOSITION (claude-haiku, Fallback: regelbasierte Heuristik)
+// ═══════════════════════════════════════════════════════════════
+
+function callClaude(prompt, maxTokens = 600) {
+  return new Promise((resolve) => {
+    if (!process.env.ANTHROPIC_API_KEY) return resolve(null);
+    const data = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const r = https.request({
+      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01',
+                 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) }
+    }, (res2) => {
+      let buf = '';
+      res2.on('data', d => buf += d);
+      res2.on('end', () => { try { resolve(JSON.parse(buf).content[0].text); } catch { resolve(null); } });
+    });
+    r.on('error', () => resolve(null));
+    r.setTimeout(20000, () => { r.destroy(); resolve(null); });
+    r.write(data); r.end();
+  });
+}
+
+async function aiDispatchVisit(visitId) {
+  const visit = (await pool.query(`
+    SELECT v.*, p.name as patient_name, p.address as patient_address, p.pflegegrad,
+           p.lat, p.lng, p.preferred_time_from, p.preferred_time_to
+    FROM visits v JOIN patients p ON v.patient_id = p.id WHERE v.id=$1
+  `, [visitId])).rows[0];
+  if (!visit) throw new Error('Besuch nicht gefunden');
+
+  // Patient ggf. on-the-fly geocodieren
+  let pCoord = visit.lat != null ? { lat: parseFloat(visit.lat), lng: parseFloat(visit.lng) } : null;
+  if (!pCoord && visit.patient_address) {
+    pCoord = await geocodeAddress(visit.patient_address);
+    if (pCoord) await pool.query('UPDATE patients SET lat=$1, lng=$2, address_geocoded=true WHERE id=$3', [pCoord.lat, pCoord.lng, visit.patient_id]);
+  }
+
+  const dateStr = new Date(visit.scheduled_at).toISOString().split('T')[0];
+  const { rows: betreuer } = await pool.query(`
+    SELECT u.id, u.name, u.qualifications, u.home_lat, u.home_lng, u.shift_start, u.max_hours_per_day,
+      COALESCE(t.stops, 0) as stops_heute,
+      COALESCE(t.minuten, 0) as gebuchte_minuten
+    FROM users u
+    LEFT JOIN (
+      SELECT betreuer_id, COUNT(*) as stops, SUM(COALESCE(duration_min, 60)) as minuten
+      FROM visits WHERE scheduled_at::date = $1::date AND status NOT IN ('abgelehnt','storniert')
+      GROUP BY betreuer_id
+    ) t ON t.betreuer_id = u.id
+    WHERE u.role='betreuer' AND u.active IS NOT FALSE
+  `, [dateStr]);
+  // Abwesende Betreuer ausschließen
+  const { rows: absent } = await pool.query('SELECT betreuer_id FROM availability WHERE date=$1::date AND available=false', [dateStr]);
+  const absentIds = new Set(absent.map(a => a.betreuer_id));
+  const candidates = betreuer.filter(b => !absentIds.has(b.id)).map(b => {
+    const home = b.home_lat != null ? { lat: parseFloat(b.home_lat), lng: parseFloat(b.home_lng) } : null;
+    const km = (pCoord && home) ? Math.round((haversineKm(home, pCoord) || 0) * 10) / 10 : null;
+    const freieStunden = Math.max(0, (b.max_hours_per_day || 8) - num(b.gebuchte_minuten) / 60);
+    return {
+      betreuer_id: b.id, name: b.name, stops_heute: parseInt(b.stops_heute),
+      freie_stunden: Math.round(freieStunden * 10) / 10,
+      entfernung_km: km,
+      qualifikationen: (() => { try { return JSON.parse(b.qualifications || '[]'); } catch { return []; } })()
+    };
+  });
+  if (!candidates.length) return { error: 'Keine aktiven Betreuer verfügbar' };
+
+  let decision = null;
+  const aiText = await callClaude(
+`Du bist Dispositions-KI für ambulante Pflege/Alltagsbegleitung.
+Neuer Auftrag:
+${JSON.stringify({ patient: visit.patient_name, adresse: visit.patient_address, pflegegrad: visit.pflegegrad, leistung: visit.service, dauer_min: visit.duration_min || 60, datum: visit.scheduled_at, zeitfenster: { von: visit.preferred_time_from, bis: visit.preferred_time_to } })}
+Verfügbare Betreuer (mit Distanz zum Patienten in km, null = unbekannt):
+${JSON.stringify(candidates)}
+Wähle den besten Betreuer (kurze Wege, freie Kapazität, passende Qualifikation).
+Antworte NUR mit einem JSON-Objekt, kein anderer Text:
+{"betreuer_id":"...","empfohlene_zeit":"HH:MM","begruendung":"max 2 Sätze","konfidenz":0.0-1.0,"alternative":[{"betreuer_id":"...","grund":"..."}],"warnungen":["..."]}`);
+
+  if (aiText) {
+    try {
+      const m = aiText.match(/\{[\s\S]*\}/);
+      const j = JSON.parse(m ? m[0] : aiText);
+      if (j.betreuer_id && candidates.find(c => c.betreuer_id === j.betreuer_id)) decision = { ...j, quelle: 'ki' };
+    } catch { /* Fallback unten */ }
+  }
+
+  if (!decision) {
+    // Regelbasierte Heuristik: nächster Betreuer mit freier Kapazität
+    const ranked = candidates
+      .filter(c => c.freie_stunden >= (visit.duration_min || 60) / 60)
+      .sort((a, b) => (a.entfernung_km ?? 999) - (b.entfernung_km ?? 999) || a.stops_heute - b.stops_heute);
+    const best = ranked[0] || candidates.sort((a, b) => a.stops_heute - b.stops_heute)[0];
+    decision = {
+      betreuer_id: best.betreuer_id,
+      empfohlene_zeit: null,
+      begruendung: `Heuristik: ${best.name} – ${best.entfernung_km != null ? best.entfernung_km + ' km Entfernung, ' : ''}${best.freie_stunden} freie Std., ${best.stops_heute} Stopps heute.`,
+      konfidenz: 0.5,
+      warnungen: ranked.length ? [] : ['Alle Betreuer ausgelastet – Kapazität prüfen'],
+      quelle: 'heuristik'
+    };
+  }
+
+  // Zeit übernehmen falls die KI eine im Format HH:MM geliefert hat
+  let newScheduled = null;
+  if (decision.empfohlene_zeit && /^\d{2}:\d{2}$/.test(decision.empfohlene_zeit)) {
+    newScheduled = `${dateStr}T${decision.empfohlene_zeit}:00`;
+  }
+
+  const { rows } = await pool.query(`
+    UPDATE visits SET betreuer_id=$1, scheduled_at=COALESCE($2, scheduled_at),
+      status = CASE WHEN status IN ('anfrage','offen') THEN 'geplant' ELSE status END,
+      ai_dispatch_note=$3, ai_dispatch_confidence=$4, ai_dispatched_at=NOW(), dispatch_overridden=false
+    WHERE id=$5 RETURNING *
+  `, [decision.betreuer_id, newScheduled,
+      JSON.stringify({ begruendung: decision.begruendung, alternative: decision.alternative || [], warnungen: decision.warnungen || [], quelle: decision.quelle }),
+      Math.min(1, Math.max(0, num(decision.konfidenz))), visitId]);
+
+  notifyNewAssignment(rows[0]);
+  notifyVisitUpdate(visitId);
+  wsBroadcast({ type: 'ai_dispatch', visit_id: visitId, betreuer_id: decision.betreuer_id, konfidenz: decision.konfidenz },
+    ws => ws.userRole === 'admin');
+  return { visit: parseVisit(rows[0]), decision };
+}
+
+app.post('/api/admin/ai-dispatch/:visit_id', auth, adminOnly, async (req, res) => {
+  try {
+    const result = await aiDispatchVisit(req.params.visit_id);
+    if (result.error) return res.status(400).json(result);
+    await audit(req, 'ai_dispatch_manual', 'visit', req.params.visit_id);
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/ai-dispatch/log', auth, adminOnly, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT v.id, v.scheduled_at, v.service, v.status, v.ai_dispatch_note, v.ai_dispatch_confidence,
+             v.ai_dispatched_at, v.dispatch_overridden, p.name as patient_name, u.name as betreuer_name
+      FROM visits v LEFT JOIN patients p ON v.patient_id=p.id LEFT JOIN users u ON v.betreuer_id=u.id
+      WHERE v.ai_dispatched_at IS NOT NULL ORDER BY v.ai_dispatched_at DESC LIMIT 50
+    `);
+    res.json(rows.map(r => ({ ...r, ai_dispatch_note: (() => { try { return JSON.parse(r.ai_dispatch_note || '{}'); } catch { return { begruendung: r.ai_dispatch_note }; } })() })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/ai-dispatch/:visit_id/override', auth, adminOnly, async (req, res) => {
+  const { betreuer_id, scheduled_at } = req.body;
+  try {
+    const { rows } = await pool.query(`
+      UPDATE visits SET betreuer_id=COALESCE($1, betreuer_id), scheduled_at=COALESCE($2, scheduled_at),
+        dispatch_overridden=true, status = CASE WHEN status IN ('anfrage','offen') THEN 'geplant' ELSE status END
+      WHERE id=$3 RETURNING *
+    `, [betreuer_id, scheduled_at, req.params.visit_id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    await audit(req, 'ai_dispatch_override', 'visit', req.params.visit_id);
+    notifyNewAssignment(rows[0]);
+    notifyVisitUpdate(req.params.visit_id);
+    res.json(parseVisit(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
