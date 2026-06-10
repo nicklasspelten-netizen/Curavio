@@ -191,6 +191,16 @@ a.plink:hover{text-decoration:underline}
     <div class="page" id="pg-plan">
       <h2>Einsatzplanung</h2>
       <div class="psub">Wochenkalender · farbcodiert nach Betreuer · Konflikte rot markiert</div>
+
+      <div class="card">
+        <h3>🔔 Buchungseingang <span class="chip chip-a" id="eingang-badge" style="display:none">0 neu</span>
+            <span class="muted">– letzte 7 Tage, KI bestätigt automatisch</span></h3>
+        <table>
+          <thead><tr><th>Eingang</th><th>Klient</th><th>Leistung</th><th>Wunschzeit</th><th>Betreuer / KI-Vorschlag</th><th>Aktion</th></tr></thead>
+          <tbody id="eingang-tbody"><tr><td colspan="6" class="muted">Wird geladen …</td></tr></tbody>
+        </table>
+      </div>
+
       <div class="card">
         <div class="frow" style="margin-bottom:14px">
           <button class="btn btn-g btn-sm" onclick="calWeek(-1)">← Vorwoche</button>
@@ -524,6 +534,7 @@ a.plink:hover{text-decoration:underline}
       </div>
     </div>
     <div class="fi" style="margin-top:14px"><label>Interne HR-Notizen</label><textarea id="mb-hrnotes" rows="2"></textarea></div>
+    <div class="fi" style="margin-top:14px"><label>Avatar-URL (Profilbild für Klienten-App)</label><input id="mb-avatar" placeholder="https://… (optional)"></div>
     <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-top:14px"><input type="checkbox" id="mb-active" checked> Aktiv</label>
 
     <h3 style="margin-top:20px;font-size:17px">📁 Dokumente &amp; Zeugnisse</h3>
@@ -745,7 +756,8 @@ function showApp() {
   loadBase().then(() => {
     loadDashboard(); loadCalendar(); loadBetreuerList(); loadKlienten(); loadInvoices();
     loadMonatsabschluss(); loadSettings(); loadCategories(); loadAvailability();
-    loadLnList(); loadAiLog(); loadUsersList(); loadAuditLog();
+    loadLnList(); loadAiLog(); loadUsersList(); loadAuditLog(); loadEingang();
+    initAdminAutocomplete();
   });
 }
 
@@ -802,7 +814,9 @@ function connectWS() {
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'visit_update') { feedAdd('Besuch aktualisiert (' + (msg.visit_id || '') + ')'); loadDashboard(); loadCalendar(); }
-    if (msg.type === 'new_assignment') { feedAdd('🔔 Neue Auftragsanfrage eingegangen'); loadDashboard(); }
+    if (msg.type === 'new_assignment') { feedAdd('🔔 Neue Auftragsanfrage eingegangen'); loadDashboard(); loadEingang(); }
+    if (msg.type === 'assignment_accepted') { feedAdd('✅ ' + (msg.betreuer_name || 'Betreuer') + ' hat Auftrag ' + msg.visit_id + ' angenommen'); loadEingang(); loadCalendar(); }
+    if (msg.type === 'visit_cancelled') { feedAdd('✕ Termin abgesagt durch ' + (msg.cancelled_by || '?') + (msg.is_late_cancel ? ' (kurzfristig – Ausfallrechnung erstellt)' : '')); loadDashboard(); loadCalendar(); loadInvoices(); }
     if (msg.type === 'new_report') { feedAdd('📋 Neuer Besuchsbericht'); }
     if (msg.type === 'ai_dispatch') { feedAdd(`🤖 KI hat Besuch ${msg.visit_id} zugewiesen (${Math.round((msg.konfidenz || 0) * 100)}%)`); loadAiLog(); }
     if (msg.type === 'nachweis_signed') { feedAdd('✍️ Leistungsnachweis unterschrieben (' + (msg.by === 'client' ? 'Klient' : 'Betreuer') + ')'); loadLnList(); loadDashboard(); }
@@ -885,7 +899,7 @@ async function loadCalendar() {
   // Konflikte: Überschneidungen beim selben Betreuer
   const conflicts = new Set();
   const byBetreuer = {};
-  visits.filter(v => v.betreuer_id && !['abgelehnt','storniert'].includes(v.status)).forEach(v => {
+  visits.filter(v => v.betreuer_id && !['abgelehnt','storniert','abgesagt'].includes(v.status)).forEach(v => {
     (byBetreuer[v.betreuer_id] = byBetreuer[v.betreuer_id] || []).push(v);
   });
   Object.values(byBetreuer).forEach(list => {
@@ -944,21 +958,22 @@ async function createVisit() {
   const svc  = document.getElementById('mv-service').value;
   if (!pid || !date || !time) { toast('Patient, Datum und Zeit erforderlich'); return; }
 
-  // Konfliktprüfung beim gewählten Betreuer
+  // Konfliktprüfung beim gewählten Betreuer (Server blockt Doppelbelegung zusätzlich hart mit 409)
   if (bid) {
     const dayVisits = await api(`/admin/visits/all?betreuer_id=${bid}&von=${date}&bis=${date}`);
     const newStart = new Date(date + 'T' + time).getTime();
     const newEnd = newStart + dur * 60000;
     const conflict = (Array.isArray(dayVisits) ? dayVisits : []).find(v => {
-      if (['abgelehnt','storniert'].includes(v.status)) return false;
+      if (['abgelehnt','storniert','abgesagt','abgeschlossen'].includes(v.status)) return false;
       const s = new Date(v.scheduled_at).getTime();
       const e = s + (v.duration_min || 60) * 60000;
       return newStart < e && newEnd > s;
     });
     if (conflict) {
       const c = document.getElementById('mv-conflict');
-      c.textContent = `⚠ Konflikt: ${conflict.patient_name || 'Besuch'} um ${deT(conflict.scheduled_at)} Uhr überschneidet sich. Trotzdem anlegen? Erneut klicken zum Bestätigen.`;
-      if (c.style.display !== 'block') { c.style.display = 'block'; return; }
+      c.textContent = `⚠ Konflikt: ${conflict.patient_name || 'Besuch'} um ${deT(conflict.scheduled_at)} Uhr überschneidet sich. Bitte andere Zeit oder anderen Betreuer wählen.`;
+      c.style.display = 'block';
+      return;
     }
   }
 
@@ -1019,6 +1034,7 @@ function editBetreuer(id) {
   document.getElementById('mb-hired').value = b.hired_at ? String(b.hired_at).substring(0, 10) : '';
   document.getElementById('mb-emptype').value = b.employment_type || '';
   document.getElementById('mb-hrnotes').value = b.hr_notes || '';
+  document.getElementById('mb-avatar').value = b.avatar_url || '';
   document.getElementById('mb-active').checked = b.active !== false;
   document.getElementById('modal-betreuer').classList.add('on');
   loadDocs(b.id);
@@ -1042,9 +1058,12 @@ async function saveBetreuer() {
       hired_at: document.getElementById('mb-hired').value || null,
       employment_type: document.getElementById('mb-emptype').value,
       hr_notes: document.getElementById('mb-hrnotes').value,
-      active: document.getElementById('mb-active').checked
+      avatar_url: document.getElementById('mb-avatar').value.trim(),
+      active: document.getElementById('mb-active').checked,
+      home_lat: mbGeo?.lat ?? null, home_lng: mbGeo?.lng ?? null
     }
   });
+  mbGeo = null;
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Gespeichert');
   closeModal('modal-betreuer');
@@ -1087,6 +1106,107 @@ async function genBetreuerGutschrift(bid, monat) {
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Gutschrift ' + res.invoice_number + ' erstellt');
   loadInvoices();
+}
+
+// ─── Adress-Autocomplete (Nominatim/OSM, debounced) ─────────────────────────
+function initAddressAutocomplete(inputId, onSelect) {
+  const inp = document.getElementById(inputId);
+  if (!inp || inp.dataset.acInit) return;
+  inp.dataset.acInit = '1';
+  let timeout;
+  const dropdown = document.createElement('ul');
+  dropdown.style.cssText =
+    'position:absolute;z-index:9999;background:var(--cream-lt);border:1.5px solid var(--border-dk);' +
+    'border-radius:10px;list-style:none;margin:2px 0 0;padding:4px 0;max-height:200px;' +
+    'overflow-y:auto;width:100%;box-shadow:0 8px 24px rgba(28,58,42,.18);display:none;left:0;top:100%;';
+  inp.parentElement.style.position = 'relative';
+  inp.parentElement.appendChild(dropdown);
+  inp.addEventListener('input', () => {
+    clearTimeout(timeout);
+    const q = inp.value.trim();
+    if (q.length < 3) { dropdown.style.display = 'none'; return; }
+    timeout = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=5&countrycodes=de`,
+          { headers: { 'Accept-Language': 'de' } });
+        const data = await res.json();
+        dropdown.innerHTML = '';
+        if (!data.length) { dropdown.style.display = 'none'; return; }
+        data.forEach(item => {
+          const li = document.createElement('li');
+          li.textContent = item.display_name;
+          li.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:12px;color:var(--text);line-height:1.4';
+          li.onmouseenter = () => li.style.background = 'var(--forest-lt)';
+          li.onmouseleave = () => li.style.background = '';
+          li.onclick = () => {
+            const a = item.address || {};
+            const street = [a.road, a.house_number].filter(Boolean).join(' ');
+            const city = [a.postcode, a.city || a.town || a.village].filter(Boolean).join(' ');
+            inp.value = [street, city].filter(Boolean).join(', ') || item.display_name;
+            dropdown.style.display = 'none';
+            if (onSelect) onSelect({ lat: parseFloat(item.lat), lng: parseFloat(item.lon) });
+          };
+          dropdown.appendChild(li);
+        });
+        dropdown.style.display = 'block';
+      } catch { dropdown.style.display = 'none'; }
+    }, 450);
+  });
+  document.addEventListener('click', e => { if (!inp.contains(e.target)) dropdown.style.display = 'none'; });
+}
+
+// Geo-Koordinaten aus dem Autocomplete (werden beim Speichern mitgesendet)
+let nkGeo = null, nbGeo = null, mbGeo = null;
+function initAdminAutocomplete() {
+  initAddressAutocomplete('nk-address', d => nkGeo = d);
+  initAddressAutocomplete('nb-address', d => nbGeo = d);
+  initAddressAutocomplete('mb-address', d => mbGeo = d);
+  // Bei manueller Änderung veralten die Koordinaten → zurücksetzen
+  [['nk-address', () => nkGeo = null], ['nb-address', () => nbGeo = null], ['mb-address', () => mbGeo = null]]
+    .forEach(([id, clear]) => document.getElementById(id)?.addEventListener('keydown', clear));
+}
+
+// ─── Buchungseingang (Queue, letzte 7 Tage) ──────────────────────────────────
+async function loadEingang() {
+  const rows = await api('/admin/bookings/eingang');
+  const tb = document.getElementById('eingang-tbody');
+  if (!Array.isArray(rows)) return;
+  const fresh = rows.filter(r => (Date.now() - new Date(r.created_at)) < 2 * 36e5).length;
+  const badge = document.getElementById('eingang-badge');
+  badge.textContent = fresh + ' neu';
+  badge.style.display = fresh ? 'inline-flex' : 'none';
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="muted">Keine Buchungen in den letzten 7 Tagen.</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => {
+    const ageH = (Date.now() - new Date(r.created_at)) / 36e5;
+    const ageChip = ageH < 2 ? 'chip-g' : ageH < 24 ? 'chip-a' : 'chip-m';
+    const conf = r.ai_dispatch_confidence != null ? Math.round(parseFloat(r.ai_dispatch_confidence) * 100) : null;
+    const kiInfo = r.betreuer_name
+      ? `${esc(r.betreuer_name)}${conf != null ? ` <span class="muted">(KI ${conf}%${r.dispatch_overridden ? ', manuell geändert' : ''})</span>` : ''}`
+      : '<span class="chip chip-r">⚠ offen</span>';
+    return `<tr>
+      <td><span class="chip ${ageChip}">${deD(r.created_at)} ${deT(r.created_at)}</span><div class="muted">${esc(r.angehoerige_name || '')}</div></td>
+      <td style="font-weight:700">${esc(r.patient_name || '')}</td>
+      <td>${esc(r.service || (r.services || [])[0] || 'Besuch')}<div class="muted">${r.duration_min || 60} Min. · ${esc(r.status)}</div></td>
+      <td>${deD(r.scheduled_at)}<div class="muted">${deT(r.scheduled_at)} Uhr</div></td>
+      <td>${kiInfo}${r.ai_dispatch_note?.begruendung ? `<div class="muted" style="max-width:240px">${esc(r.ai_dispatch_note.begruendung)}</div>` : ''}</td>
+      <td style="white-space:nowrap">
+        <select id="ein-ovr-${r.id}" style="padding:5px;border:1.5px solid var(--border);border-radius:8px;background:var(--cream);font-size:12px">
+          ${CACHE.betreuer.filter(b => b.active !== false).map(b => `<option value="${b.id}" ${b.id === r.betreuer_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-g btn-sm" onclick="eingangOverride('${r.id}')">Überschreiben</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function eingangOverride(visitId) {
+  const bid = document.getElementById('ein-ovr-' + visitId)?.value;
+  if (!bid) return;
+  const r = await api(`/admin/ai-dispatch/${visitId}/override`, { method: 'PATCH', body: { betreuer_id: bid } });
+  if (r.error) { toast('Fehler: ' + r.error); return; }
+  toast('✅ Betreuer geändert');
+  loadEingang(); loadCalendar(); loadAiLog();
 }
 
 // ─── Personalakte: Dokumente (Zeugnisse & Co.) ───────────────────────────────
@@ -1168,9 +1288,11 @@ async function createBetreuer() {
       qualifications: document.getElementById('nb-quali').value.split(',').map(s => s.trim()).filter(Boolean),
       iban: document.getElementById('nb-iban').value,
       tax_id: document.getElementById('nb-taxid').value,
-      hr_notes: document.getElementById('nb-hrnotes').value
+      hr_notes: document.getElementById('nb-hrnotes').value,
+      home_lat: nbGeo?.lat ?? null, home_lng: nbGeo?.lng ?? null
     }
   });
+  nbGeo = null;
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Betreuer angelegt – Dokumente jetzt über „Personalakte“ hochladen');
   closeModal('modal-betreuer-neu');
@@ -1215,9 +1337,11 @@ async function createKlient() {
       preferred_time_to: document.getElementById('nk-tto').value || null,
       betreuer_id: document.getElementById('nk-betreuer').value || null,
       notes: document.getElementById('nk-notes').value,
-      angehoerige_ids: angIds
+      angehoerige_ids: angIds,
+      lat: nkGeo?.lat ?? null, lng: nkGeo?.lng ?? null
     }
   });
+  nkGeo = null;
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Klient angelegt – Freibeträge erstellt, Adresse wird geocodiert' + (angIds.length ? ', App-Zugang aktiv' : ''));
   closeModal('modal-klient');

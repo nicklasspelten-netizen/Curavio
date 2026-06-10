@@ -157,6 +157,8 @@ async function initDB() {
       ALTER TABLE visits ADD COLUMN IF NOT EXISTS rating_comment TEXT DEFAULT '';
       ALTER TABLE visits ADD COLUMN IF NOT EXISTS gps_start TEXT DEFAULT '';
       ALTER TABLE visits ADD COLUMN IF NOT EXISTS gps_end TEXT DEFAULT '';
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(50) DEFAULT '';
+      ALTER TABLE visits ADD COLUMN IF NOT EXISTS cancelled_reason TEXT DEFAULT '';
       ALTER TABLE visits ALTER COLUMN betreuer_id DROP NOT NULL;
 
       ALTER TABLE visits ADD COLUMN IF NOT EXISTS ai_dispatch_note TEXT DEFAULT '';
@@ -185,6 +187,7 @@ async function initDB() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS hired_at DATE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS employment_type VARCHAR(50) DEFAULT '';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS hr_notes TEXT DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
       ALTER TABLE users ALTER COLUMN tax_id TYPE TEXT;
 
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS pflegegrad INTEGER DEFAULT 1;
@@ -373,7 +376,8 @@ async function initDB() {
       default_hourly_rate: '25.00',
       mwst_satz: '0',
       mwst_hinweis: 'Umsatzsteuerfrei gemäß §4 Nr.16 UStG (soziale Dienstleistung)',
-      zahlungsziel_tage: '14'
+      zahlungsziel_tage: '14',
+      datenschutz_hinweis_absage: 'Bei kurzfristiger Absage (< 24 Stunden vor Termin) wird eine Ausfallgebühr gemäß unserer AGB erhoben. Die Verarbeitung Ihrer Buchungsdaten zur Rechnungsstellung erfolgt auf Basis von Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).'
     };
     for (const [k, v] of Object.entries(defaults)) {
       await client.query('INSERT INTO settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING', [k, v]);
@@ -504,6 +508,7 @@ function wsBroadcast(obj, filter) {
   });
 }
 const notifyVisitUpdate = (visitId) => wsBroadcast({ type: 'visit_update', visit_id: visitId });
+const sendToUser = (userId, obj) => wsBroadcast(obj, ws => ws.userId === userId);
 const notifyNewAssignment = (visit) => wsBroadcast(
   { type: 'new_assignment', visit_id: visit.id },
   ws => ws.userRole === 'betreuer' && (!visit.betreuer_id || ws.userId === visit.betreuer_id) || ws.userRole === 'admin'
@@ -623,7 +628,7 @@ app.post('/api/me/consent/revoke', auth, async (req, res) => {
 
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, name, email, role, phone, hourly_rate, iban, consent_accepted, last_login FROM users WHERE id = $1', [req.user.id]);
+    const { rows } = await pool.query('SELECT id, name, email, role, phone, address, hourly_rate, iban, consent_accepted, last_login FROM users WHERE id = $1', [req.user.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
     res.json({ ...rows[0], iban: maskIban(rows[0].iban) });
   } catch (e) {
@@ -657,11 +662,12 @@ app.get('/api/patients', auth, async (req, res) => {
 app.post('/api/patients', auth, async (req, res) => {
   if (!['admin', 'betreuer'].includes(req.user.role)) return res.status(403).json({ error: 'Keine Berechtigung' });
   const { name, address, care_level, pflegegrad, betreuer_id, notes, angehoerige_ids, phone, insurance,
-          insurance_number, emergency_contact, birth_date, preferred_time_from, preferred_time_to } = req.body;
+          insurance_number, emergency_contact, birth_date, preferred_time_from, preferred_time_to, lat, lng } = req.body;
   if (!name) return res.status(400).json({ error: 'Name erforderlich' });
   try {
     const id = gid('p');
     const pg = pflegegrad || care_level || 1;
+    const hasGeo = lat != null && lng != null && !isNaN(parseFloat(lat));
     const { rows } = await pool.query(
       `INSERT INTO patients (id, name, address, care_level, pflegegrad, betreuer_id, notes, angehoerige_ids,
          phone, insurance, insurance_number, emergency_contact, birth_date, preferred_time_from, preferred_time_to)
@@ -672,8 +678,10 @@ app.post('/api/patients', auth, async (req, res) => {
     );
     await getOrCreateFreibetrag(id, new Date().getFullYear());
     await audit(req, 'create_patient', 'patient', id);
-    // Adresse asynchron für die Routenplanung geocodieren
-    if (address) {
+    // Koordinaten: direkt aus Autocomplete übernehmen, sonst asynchron geocodieren
+    if (hasGeo) {
+      await pool.query('UPDATE patients SET lat=$1, lng=$2, address_geocoded=true WHERE id=$3', [parseFloat(lat), parseFloat(lng), id]);
+    } else if (address) {
       setImmediate(async () => {
         const c = await geocodeAddress(address);
         if (c) await pool.query('UPDATE patients SET lat=$1, lng=$2, address_geocoded=true WHERE id=$3', [c.lat, c.lng, id]).catch(() => {});
@@ -754,6 +762,33 @@ app.post('/api/visits', auth, async (req, res) => {
       : (pat.betreuer_id || null);
     const status = (req.user.role === 'admin' && assignedBetreuer) ? 'geplant' : 'anfrage';
 
+    // Doppelbelegungs-Schutz (DB-Ebene): überlappende Termine blocken
+    const startDt = new Date(scheduled_at);
+    const endDt = new Date(startDt.getTime() + dur * 60000);
+    if (assignedBetreuer) {
+      const { rows: clash } = await pool.query(`
+        SELECT id FROM visits
+        WHERE betreuer_id = $1
+          AND status NOT IN ('abgesagt','abgelehnt','abgeschlossen','storniert')
+          AND scheduled_at < $3
+          AND (scheduled_at + (COALESCE(duration_min, 60) || ' minutes')::interval) > $2
+      `, [assignedBetreuer, startDt.toISOString(), endDt.toISOString()]);
+      if (clash.length) return res.status(409).json({
+        error: 'Betreuer ist zu dieser Zeit bereits verplant.',
+        conflict_visit_id: clash[0].id
+      });
+    }
+    const { rows: patClash } = await pool.query(`
+      SELECT id FROM visits
+      WHERE patient_id = $1
+        AND status NOT IN ('abgesagt','abgelehnt','abgeschlossen','storniert')
+        AND scheduled_at < $3
+        AND (scheduled_at + (COALESCE(duration_min, 60) || ' minutes')::interval) > $2
+    `, [patient_id, startDt.toISOString(), endDt.toISOString()]);
+    if (patClash.length) return res.status(409).json({
+      error: 'Dieser Patient hat bereits einen Termin zu dieser Zeit.'
+    });
+
     const { rows } = await pool.query(
       `INSERT INTO visits (id, patient_id, betreuer_id, scheduled_at, duration, duration_min, notes, services, service, location, address, status)
        VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
@@ -801,6 +836,241 @@ app.post('/api/visits/:id/rating', auth, async (req, res) => {
       [r, comment || '', req.params.id]
     );
     res.json(parseVisit(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══ Terminabsage (alle Rollen) + Ausfallrechnung bei kurzfristiger Absage ═══
+app.patch('/api/visits/:id/cancel', auth, async (req, res) => {
+  const { reason = '' } = req.body || {};
+  try {
+    const visit = (await pool.query('SELECT * FROM visits WHERE id=$1', [req.params.id])).rows[0];
+    if (!visit) return res.status(404).json({ error: 'Nicht gefunden' });
+    if (['abgeschlossen', 'abgesagt', 'storniert'].includes(visit.status)) {
+      return res.status(400).json({ error: 'Besuch kann nicht mehr abgesagt werden (Status: ' + visit.status + ')' });
+    }
+
+    // Berechtigungsprüfung
+    const role = req.user.role, uid = req.user.id;
+    if (role === 'angehoeriger') {
+      if (!await isAngehoerigerOf(uid, visit.patient_id)) return res.status(403).json({ error: 'Kein Zugriff' });
+    } else if (role === 'betreuer') {
+      if (visit.betreuer_id !== uid) return res.status(403).json({ error: 'Kein Zugriff' });
+    } else if (role !== 'admin') {
+      return res.status(403).json({ error: 'Kein Zugriff' });
+    }
+
+    // Kurzfristige Absage < 24h? Ausfallgebühr nur bei Absage durch Angehörige
+    // (Betreuer-/Admin-Absagen gehen nicht zu Lasten des Kunden)
+    const hoursUntil = (new Date(visit.scheduled_at) - new Date()) / 36e5;
+    const isLateCancel = role === 'angehoeriger' && hoursUntil < 24 && hoursUntil > 0;
+
+    await pool.query(
+      `UPDATE visits SET status='abgesagt', cancelled_by=$1, cancelled_reason=$2,
+        notes = CONCAT(notes, $3) WHERE id=$4`,
+      [`${role}:${uid}`, String(reason).substring(0, 500),
+       `\n[Absage ${new Date().toLocaleString('de-DE')} durch ${role}: ${reason}]`, req.params.id]
+    );
+
+    // Ausfallrechnung
+    let ausfallInvoiceId = null, ausfallInvoiceNr = null;
+    if (isLateCancel) {
+      const settings = await getSettings();
+      const betr = visit.betreuer_id ? (await pool.query('SELECT hourly_rate FROM users WHERE id=$1', [visit.betreuer_id])).rows[0] : null;
+      const rate = num(visit.hourly_rate) || num(betr?.hourly_rate) || num(settings.default_hourly_rate) || 35;
+      const durationH = (visit.duration_min || 60) / 60;
+      const cancelFee = Math.round(rate * durationH * 100) / 100;
+      const pat = (await pool.query('SELECT name FROM patients WHERE id=$1', [visit.patient_id])).rows[0];
+
+      ausfallInvoiceId = gid('inv');
+      ausfallInvoiceNr = 'AUS-' + new Date().getFullYear() + '-' + ausfallInvoiceId.slice(-6).toUpperCase();
+      const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + (parseInt(settings.zahlungsziel_tage) || 14));
+      await pool.query(`
+        INSERT INTO invoices (id, invoice_number, type, recipient_id, recipient_name,
+          period_from, period_to, line_items, subtotal, total_netto, total_brutto,
+          status, due_date, notes, created_by)
+        VALUES ($1,$2,'kunde',$3,$4,$5,$5,$6,$7,$7,$7,'entwurf',$8,$9,$10)
+      `, [ausfallInvoiceId, ausfallInvoiceNr, visit.patient_id, pat?.name || 'Klient',
+          visit.scheduled_at,
+          JSON.stringify([{
+            date: new Date(visit.scheduled_at).toISOString().split('T')[0],
+            service: `Ausfallgebühr – kurzfristige Absage (< 24h) am ${new Date(visit.scheduled_at).toLocaleDateString('de-DE')}`,
+            hours: durationH, rate, amount: cancelFee
+          }]),
+          cancelFee, dueDate,
+          `Automatisch erstellt: Kurzfristige Absage durch ${role}. Gemäß AGB und Datenschutzerklärung (Ausfallgebühren, Art. 6 Abs. 1 lit. b DSGVO).`,
+          uid]);
+    }
+
+    await audit(req, 'visit_cancelled' + (isLateCancel ? '_late' : ''), 'visit', req.params.id);
+    wsBroadcast({
+      type: 'visit_cancelled', visit_id: req.params.id, cancelled_by: role, reason,
+      is_late_cancel: isLateCancel, ausfall_invoice_id: ausfallInvoiceId
+    });
+    notifyVisitUpdate(req.params.id);
+    // E-Mail-Platzhalter (kein SMTP konfiguriert)
+    console.log(`[EMAIL] Absage-Benachrichtigung: Besuch ${req.params.id} durch ${role}${isLateCancel ? ' – Ausfallrechnung ' + ausfallInvoiceNr : ''}`);
+
+    res.json({ ok: true, is_late_cancel: isLateCancel, ausfall_invoice_id: ausfallInvoiceId, ausfall_invoice_nr: ausfallInvoiceNr });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══ Smart Scheduling: Verfügbarkeit prüfen + Alternativvorschläge ═══
+const OVERLAP_SQL = `
+  SELECT id, scheduled_at, duration_min, patient_id FROM visits
+  WHERE betreuer_id = $1
+    AND status NOT IN ('abgesagt','abgelehnt','abgeschlossen','storniert')
+    AND scheduled_at < $3
+    AND (scheduled_at + (COALESCE(duration_min, 60) || ' minutes')::interval) > $2`;
+
+app.get('/api/availability/check', auth, async (req, res) => {
+  const { betreuer_id, date, time } = req.query;
+  const duration_min = parseInt(req.query.duration_min) || 60;
+  if (!betreuer_id || !date || !time) return res.status(400).json({ error: 'betreuer_id, date, time erforderlich' });
+  try {
+    const start = new Date(`${date}T${time}:00`);
+    if (isNaN(start)) return res.status(400).json({ error: 'Ungültiges Datum/Zeit' });
+    const end = new Date(start.getTime() + duration_min * 60000);
+
+    const { rows: conflicts } = await pool.query(OVERLAP_SQL, [betreuer_id, start.toISOString(), end.toISOString()]);
+    if (!conflicts.length) return res.json({ available: true });
+
+    // Alternativen: ±2h-Fenster beim gleichen Betreuer
+    const alternatives = [];
+    for (const delta of [-120, -60, 60, 120, 180, 240]) {
+      const altStart = new Date(start.getTime() + delta * 60000);
+      if (altStart < new Date()) continue; // keine Vorschläge in der Vergangenheit
+      const altEnd = new Date(altStart.getTime() + duration_min * 60000);
+      const { rows: c2 } = await pool.query(OVERLAP_SQL, [betreuer_id, altStart.toISOString(), altEnd.toISOString()]);
+      if (!c2.length) {
+        alternatives.push({
+          type: 'same_betreuer', betreuer_id, time: altStart.toISOString(),
+          label: `${altStart.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr (${delta > 0 ? '+' : ''}${delta / 60}h)`
+        });
+        if (alternatives.length >= 3) break;
+      }
+    }
+    // Fallback: andere aktive Betreuer zur Wunschzeit
+    if (!alternatives.length) {
+      const { rows: betreuer } = await pool.query(
+        "SELECT id, name FROM users WHERE role='betreuer' AND active IS NOT FALSE AND id != $1", [betreuer_id]);
+      for (const b of betreuer) {
+        const { rows: c3 } = await pool.query(OVERLAP_SQL, [b.id, start.toISOString(), end.toISOString()]);
+        if (!c3.length) {
+          alternatives.push({ type: 'alt_betreuer', betreuer_id: b.id, betreuer_name: b.name,
+                              time: start.toISOString(), label: `Gleiche Zeit mit ${b.name}` });
+          if (alternatives.length >= 3) break;
+        }
+      }
+    }
+    res.json({ available: false, conflicts: conflicts.length, alternatives });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══ Betreuer-Profil (LinkedIn-Style) — für alle eingeloggten Rollen ═══
+app.get('/api/betreuer/:id/profil', auth, async (req, res) => {
+  try {
+    const u = (await pool.query(
+      "SELECT id, name, qualifications, hourly_rate, active, avatar_url, phone, created_at FROM users WHERE id=$1 AND role='betreuer'",
+      [req.params.id])).rows[0];
+    if (!u) return res.status(404).json({ error: 'Betreuer nicht gefunden' });
+    const [stats, ratings] = await Promise.all([
+      pool.query(`SELECT COUNT(*) FILTER (WHERE status='abgeschlossen') as done, ROUND(AVG(rating)::numeric, 2) as avg
+                  FROM visits WHERE betreuer_id=$1`, [req.params.id]),
+      pool.query(`SELECT rating, rating_comment, COALESCE(actual_end, scheduled_at) as date
+                  FROM visits WHERE betreuer_id=$1 AND rating IS NOT NULL
+                  ORDER BY COALESCE(actual_end, scheduled_at) DESC LIMIT 10`, [req.params.id])
+    ]);
+    res.json({
+      id: u.id, name: u.name,
+      qualifications: (() => { try { return JSON.parse(u.qualifications || '[]'); } catch { return []; } })(),
+      hourly_rate: num(u.hourly_rate), aktiv: u.active !== false,
+      avatar_url: u.avatar_url || '',
+      phone: (req.user.role === 'admin' || req.user.id === u.id) ? u.phone : undefined,
+      member_since: u.created_at,
+      visits_count: parseInt(stats.rows[0].done),
+      avg_rating: stats.rows[0].avg,
+      bewertungen: ratings.rows.map(r => ({ rating: r.rating, comment: r.rating_comment || '', date: r.date }))
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══ Dispo: Eingehende Buchungen (Queue, letzte 7 Tage) ═══
+app.get('/api/admin/bookings/eingang', auth, adminOnly, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT v.id, v.created_at, v.scheduled_at, v.service, v.services, v.status, v.duration_min,
+             v.betreuer_id, v.ai_dispatch_note, v.ai_dispatch_confidence, v.dispatch_overridden,
+             p.name as patient_name,
+             (SELECT name FROM users WHERE id = (p.angehoerige_ids::json->>0)) as angehoerige_name,
+             u.name as betreuer_name
+      FROM visits v
+      LEFT JOIN patients p ON v.patient_id = p.id
+      LEFT JOIN users u ON v.betreuer_id = u.id
+      WHERE v.created_at > NOW() - INTERVAL '7 days'
+      ORDER BY v.created_at DESC LIMIT 100
+    `);
+    res.json(rows.map(r => ({
+      ...parseVisit(r),
+      ai_dispatch_note: (() => { try { return JSON.parse(r.ai_dispatch_note || '{}'); } catch { return {}; } })()
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══ Eigene Daten bearbeiten (alle Rollen) + Patientendaten (Angehörige) ═══
+app.patch('/api/me/profile', auth, async (req, res) => {
+  const { name, phone, address, password, old_password } = req.body;
+  try {
+    if (password) {
+      if (String(password).length < 8) return res.status(400).json({ error: 'Neues Passwort: mindestens 8 Zeichen' });
+      const me = (await pool.query('SELECT password FROM users WHERE id=$1', [req.user.id])).rows[0];
+      if (!old_password || !await bcrypt.compare(old_password, me.password)) {
+        return res.status(403).json({ error: 'Altes Passwort ist falsch' });
+      }
+      await pool.query('UPDATE users SET password=$1 WHERE id=$2', [await bcrypt.hash(password, 12), req.user.id]);
+      await audit(req, 'password_changed', 'user', req.user.id);
+    }
+    const { rows } = await pool.query(
+      `UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone), address=COALESCE($3,address)
+       WHERE id=$4 RETURNING id, name, email, role, phone, address`,
+      [name, phone, address, req.user.id]
+    );
+    await audit(req, 'profile_updated', 'user', req.user.id);
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/me/patient/:patient_id', auth, async (req, res) => {
+  if (req.user.role !== 'angehoeriger' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Keine Berechtigung' });
+  }
+  try {
+    if (req.user.role === 'angehoeriger' && !await isAngehoerigerOf(req.user.id, req.params.patient_id)) {
+      return res.status(403).json({ error: 'Kein Zugriff auf diesen Patienten' });
+    }
+    const { name, address, phone, insurance, insurance_number, notes, pflegegrad } = req.body;
+    if (pflegegrad != null && (parseInt(pflegegrad) < 1 || parseInt(pflegegrad) > 5)) {
+      return res.status(400).json({ error: 'Pflegegrad muss zwischen 1 und 5 liegen' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE patients SET name=COALESCE($1,name), address=COALESCE($2,address), phone=COALESCE($3,phone),
+        insurance=COALESCE($4,insurance), insurance_number=COALESCE($5,insurance_number),
+        notes=COALESCE($6,notes), pflegegrad=COALESCE($7,pflegegrad),
+        address_geocoded = CASE WHEN $2 IS NOT NULL AND $2 != address THEN false ELSE address_geocoded END
+       WHERE id=$8 RETURNING *`,
+      [name, address, phone != null ? encryptField(phone) : null,
+       insurance, insurance_number != null ? encryptField(insurance_number) : null,
+       notes, pflegegrad != null ? parseInt(pflegegrad) : null, req.params.patient_id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    await audit(req, 'patient_data_updated', 'patient', req.params.patient_id);
+    if (address) {
+      setImmediate(async () => {
+        const c = await geocodeAddress(address);
+        if (c) await pool.query('UPDATE patients SET lat=$1, lng=$2, address_geocoded=true WHERE id=$3', [c.lat, c.lng, req.params.patient_id]).catch(() => {});
+      });
+    }
+    res.json({ ...rows[0], angehoerige_ids: JSON.parse(rows[0].angehoerige_ids || '[]'),
+               phone: decryptField(rows[0].phone), insurance_number: decryptField(rows[0].insurance_number) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -893,6 +1163,9 @@ app.patch('/api/visits/:id/accept', auth, requireRole('betreuer', 'admin'), asyn
     );
     if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
     notifyVisitUpdate(req.params.id);
+    // Dispo informieren: Betreuer hat selbst angenommen
+    wsBroadcast({ type: 'assignment_accepted', visit_id: req.params.id, betreuer_id: req.user.id, betreuer_name: req.user.name },
+      ws => ws.userRole === 'admin');
     res.json(parseVisit(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1807,17 +2080,23 @@ app.patch('/api/admin/betreuer/:id', auth, adminOnly, async (req, res) => {
     // Maskierte Werte aus dem Frontend nicht zurückschreiben
     const ibanVal = (iban != null && !String(iban).startsWith('••••')) ? encryptField(iban) : null;
     const taxVal = (tax_id != null && !String(tax_id).startsWith('•••')) ? encryptField(tax_id) : null;
+    const { avatar_url, home_lat, home_lng } = req.body;
+    // Heimatkoordinaten aus dem Adress-Autocomplete direkt übernehmen
+    if (home_lat != null && home_lng != null && !isNaN(parseFloat(home_lat))) {
+      await pool.query('UPDATE users SET home_lat=$1, home_lng=$2 WHERE id=$3',
+        [parseFloat(home_lat), parseFloat(home_lng), req.params.id]);
+    }
     const { rows } = await pool.query(`
       UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone), hourly_rate=COALESCE($3,hourly_rate),
         qualifications=COALESCE($4,qualifications), active=COALESCE($5,active), iban=COALESCE($6,iban), tax_id=COALESCE($7,tax_id),
         shift_start=COALESCE($8,shift_start), max_hours_per_day=COALESCE($9,max_hours_per_day), address=COALESCE($10,address),
         birth_date=COALESCE($11,birth_date), hired_at=COALESCE($12,hired_at),
-        employment_type=COALESCE($13,employment_type), hr_notes=COALESCE($14,hr_notes)
-      WHERE id=$15 AND role='betreuer'
+        employment_type=COALESCE($13,employment_type), hr_notes=COALESCE($14,hr_notes), avatar_url=COALESCE($15,avatar_url)
+      WHERE id=$16 AND role='betreuer'
       RETURNING id, name, email, phone, hourly_rate, qualifications, active, iban, tax_id, shift_start,
-                max_hours_per_day, address, birth_date, hired_at, employment_type, hr_notes
+                max_hours_per_day, address, birth_date, hired_at, employment_type, hr_notes, avatar_url
     `, [name, phone, hourly_rate, qualifications ? JSON.stringify(qualifications) : null, active, ibanVal, taxVal,
-        shift_start, max_hours_per_day, address, birth_date, hired_at, employment_type, hr_notes, req.params.id]);
+        shift_start, max_hours_per_day, address, birth_date, hired_at, employment_type, hr_notes, avatar_url, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Betreuer nicht gefunden' });
     await audit(req, 'update_betreuer_profile', 'user', req.params.id);
     res.json({ ...rows[0], iban: maskIban(rows[0].iban), tax_id: maskTaxId(rows[0].tax_id) });
@@ -1933,7 +2212,7 @@ app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
 app.post('/api/admin/users', auth, adminOnly, async (req, res) => {
   const { name, email, password, role, phone, hourly_rate,
           address, iban, tax_id, qualifications, shift_start, max_hours_per_day,
-          birth_date, hired_at, employment_type, hr_notes } = req.body;
+          birth_date, hired_at, employment_type, hr_notes, home_lat, home_lng } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, E-Mail, Passwort erforderlich' });
   if (String(password).length < 8) return res.status(400).json({ error: 'Passwort: mindestens 8 Zeichen' });
   try {
@@ -1951,8 +2230,10 @@ app.post('/api/admin/users', auth, adminOnly, async (req, res) => {
        birth_date || null, hired_at || null, employment_type || '', hr_notes || '']
     );
     await audit(req, 'user_created', 'user', rows[0].id);
-    // Heimatadresse für Routenplanung asynchron geocodieren
-    if ((role === 'betreuer') && address) {
+    // Heimatkoordinaten: aus Autocomplete übernehmen, sonst asynchron geocodieren
+    if (home_lat != null && home_lng != null && !isNaN(parseFloat(home_lat))) {
+      await pool.query('UPDATE users SET home_lat=$1, home_lng=$2 WHERE id=$3', [parseFloat(home_lat), parseFloat(home_lng), rows[0].id]);
+    } else if ((role === 'betreuer') && address) {
       setImmediate(async () => {
         const c = await geocodeAddress(address);
         if (c) await pool.query('UPDATE users SET home_lat=$1, home_lng=$2 WHERE id=$3', [c.lat, c.lng, rows[0].id]).catch(() => {});
@@ -2559,7 +2840,7 @@ async function buildDayRoute(betreuerId, date) {
     SELECT v.*, p.name as patient_name, p.address as patient_address, p.lat, p.lng, p.preferred_time_from, p.preferred_time_to
     FROM visits v JOIN patients p ON v.patient_id = p.id
     WHERE v.betreuer_id = $1 AND v.scheduled_at::date = $2::date
-      AND v.status NOT IN ('abgelehnt','storniert')
+      AND v.status NOT IN ('abgelehnt','storniert','abgesagt')
     ORDER BY v.scheduled_at ASC
   `, [betreuerId, date]);
   const stops = visits.map(v => ({
@@ -2655,10 +2936,23 @@ app.patch('/api/admin/route/apply', auth, adminOnly, async (req, res) => {
       const deltaMin = Math.abs(new Date(c.new_time) - new Date(old.scheduled_at)) / 60000;
       applied.push({ visit_id: c.visit_id, delta_min: Math.round(deltaMin) });
       if (deltaMin > 15) {
-        wsBroadcast({ type: 'route_update', visit_id: c.visit_id, new_time: c.new_time, old_time: old.scheduled_at },
+        const newT = new Date(c.new_time);
+        const fmtT = newT.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        const fmtD = newT.toLocaleDateString('de-DE');
+        // Betreuer benachrichtigen
+        wsBroadcast({ type: 'route_update', visit_id: c.visit_id, new_time: c.new_time, old_time: old.scheduled_at,
+                      message: `Termin verschoben: ${fmtD}, ${fmtT} Uhr` },
           ws => ws.userId === old.betreuer_id || ws.userRole === 'admin');
-        wsBroadcast({ type: 'visit_rescheduled', visit_id: c.visit_id, new_time: c.new_time, patient_id: old.patient_id },
-          ws => ws.userRole === 'angehoeriger');
+        // NUR die Angehörigen dieses Patienten benachrichtigen (DSGVO) + Anruf-Option
+        const pat = (await pool.query('SELECT angehoerige_ids FROM patients WHERE id=$1', [old.patient_id])).rows[0];
+        const angIds = (() => { try { return JSON.parse(pat?.angehoerige_ids || '[]'); } catch { return []; } })();
+        const betr = old.betreuer_id ? (await pool.query('SELECT name, phone FROM users WHERE id=$1', [old.betreuer_id])).rows[0] : null;
+        wsBroadcast({ type: 'visit_rescheduled', visit_id: c.visit_id, new_time: c.new_time, old_time: old.scheduled_at,
+                      patient_id: old.patient_id, betreuer_name: betr?.name || '', phone: betr?.phone || '',
+                      message: `Ihr Termin am ${fmtD} wurde auf ${fmtT} Uhr verschoben.` },
+          ws => angIds.includes(ws.userId));
+        // E-Mail-Platzhalter (kein SMTP konfiguriert)
+        console.log(`[EMAIL] Terminänderung Besuch ${c.visit_id}: neu ${fmtD} ${fmtT} Uhr`);
       }
     }
     await audit(req, 'route_applied', 'route', applied.length + ' Besuche');
@@ -2716,7 +3010,7 @@ async function aiDispatchVisit(visitId) {
     FROM users u
     LEFT JOIN (
       SELECT betreuer_id, COUNT(*) as stops, SUM(COALESCE(duration_min, 60)) as minuten
-      FROM visits WHERE scheduled_at::date = $1::date AND status NOT IN ('abgelehnt','storniert')
+      FROM visits WHERE scheduled_at::date = $1::date AND status NOT IN ('abgelehnt','storniert','abgesagt')
       GROUP BY betreuer_id
     ) t ON t.betreuer_id = u.id
     WHERE u.role='betreuer' AND u.active IS NOT FALSE

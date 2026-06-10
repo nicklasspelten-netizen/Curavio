@@ -139,12 +139,6 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
 .prog-t{height:5px;background:var(--cream-dk);border-radius:var(--r-full);overflow:hidden}
 .prog-f{height:100%;border-radius:var(--r-full);background:linear-gradient(90deg,var(--amber),var(--forest));transition:width .5s}
 
-/* ── Vitals ── */
-.vrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px}
-.vcard{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 10px;text-align:center}
-.v-ico{font-size:18px}.v-val{font-family:var(--f-serif);font-size:19px;font-weight:600;color:var(--text);margin-top:4px}
-.v-lbl{font-size:10px;font-weight:600;color:var(--muted-lt);margin-top:2px;letter-spacing:.03em;text-transform:uppercase}
-
 /* ── Quick actions ── */
 .qag{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px}
 .qab{background:var(--cream-lt);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 16px;
@@ -374,7 +368,11 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
               <svg viewBox="0 0 40 40" fill="none" width="28" height="28"><circle cx="14" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><circle cx="26" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><path d="M20 38 C10 30 4 24 4 18 C4 13 7.5 10 12 10 C15 10 17.5 11.5 20 14 C22.5 11.5 25 10 28 10 C32.5 10 36 13 36 18 C36 24 30 30 20 38Z" stroke="#F2C98A" stroke-width="2" fill="none"/></svg>
               <span style="font-family:var(--f-serif);font-size:20px;font-weight:600;color:#fff">Curavio</span>
             </div>
-            <button onclick="doLogout()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Abmelden</button>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button onclick="goTo('sc-benachrichtigungen')" style="position:relative;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer">🔔<span id="notif-badge" style="display:none;position:absolute;top:-6px;right:-6px;background:var(--amber);color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;padding:0 3px;line-height:16px;text-align:center">0</span></button>
+              <button onclick="goTo('sc-mein-profil')" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer" title="Mein Profil">👤</button>
+              <button onclick="doLogout()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Abmelden</button>
+            </div>
           </div>
           <div class="h-greet" id="h-greet">Guten Tag</div>
           <div class="h-title">Alles im <em>Blick.</em><br>Immer.</div>
@@ -409,14 +407,6 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
           <div class="prog-steps"><span>Gestartet</span><span class="act">Unterwegs ●</span><span>Angekommen</span></div>
           <div class="prog-t"><div class="prog-f" id="prog-fill" style="width:62%"></div></div>
         </div>
-      </div>
-
-      <!-- Vitals -->
-      <div class="stl">Letzte Messwerte</div>
-      <div class="vrow">
-        <div class="vcard"><div class="v-ico">❤️</div><div class="v-val">72</div><div class="v-lbl">Puls</div></div>
-        <div class="vcard"><div class="v-ico">🩺</div><div class="v-val" style="font-size:15px">128/82</div><div class="v-lbl">Blutdruck</div></div>
-        <div class="vcard"><div class="v-ico">🌤</div><div class="v-val" style="font-size:15px">Gut</div><div class="v-lbl">Stimmung</div></div>
       </div>
 
       <!-- Quick actions -->
@@ -519,6 +509,7 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
       </div>
       <div class="bbody" id="bs3" style="display:none">
         <div class="bst">Alles stimmt?</div>
+        <div id="avail-banner" style="display:none;margin-bottom:14px"></div>
         <div class="sum-card">
           <div class="sum-row"><span class="sum-l">Patient</span><span class="sum-v" id="sv-pat">Heinrich Müller</span></div>
           <div class="sum-row"><span class="sum-l">Leistung</span><span class="sum-v" id="sv-svc">–</span></div>
@@ -587,6 +578,44 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
       </div>
     </div>
 
+    <!-- ── BENACHRICHTIGUNGEN (beide Rollen) ── -->
+    <div class="sc" id="sc-benachrichtigungen">
+      <div class="rhdr">
+        <h2>Benachrichtigungen</h2>
+        <p>Terminänderungen, Aufträge &amp; Hinweise</p>
+      </div>
+      <div style="height:10px"></div>
+      <div id="notif-list" style="padding:0 16px 20px">
+        <div style="padding:12px 6px;font-size:13px;color:var(--muted)">Keine Benachrichtigungen.</div>
+      </div>
+    </div>
+
+    <!-- ── MEIN PROFIL (Angehörige) ── -->
+    <div class="sc" id="sc-mein-profil">
+      <div class="rhdr">
+        <h2>Mein Profil</h2>
+        <p>Eigene Daten &amp; Patientendaten bearbeiten</p>
+      </div>
+      <div style="padding:16px">
+        <div class="card" style="padding:16px;margin-bottom:14px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:12px">Meine Daten</div>
+          <div class="fi"><label>Name</label><input id="mp-name"></div>
+          <div class="fi"><label>Telefon</label><input id="mp-phone"></div>
+          <div class="fi"><label>Adresse</label><input id="mp-address" placeholder="Straße Nr., PLZ Ort" autocomplete="off"></div>
+          <button class="btn btn-f" style="padding:12px" onclick="saveMyProfile()">Speichern ✓</button>
+        </div>
+        <div class="card" style="padding:16px;margin-bottom:14px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:12px">Passwort ändern</div>
+          <div class="fi"><label>Altes Passwort</label><input id="mp-oldpw" type="password"></div>
+          <div class="fi"><label>Neues Passwort (min. 8 Zeichen)</label><input id="mp-newpw" type="password"></div>
+          <div class="fi"><label>Neues Passwort bestätigen</label><input id="mp-newpw2" type="password"></div>
+          <button class="btn btn-a" style="padding:12px" onclick="changeMyPassword()">Passwort ändern</button>
+        </div>
+        <div class="stl" style="padding-left:6px">Patientendaten</div>
+        <div id="mp-patients"></div>
+      </div>
+    </div>
+
     <!-- ── BETREUER HOME ── -->
     <div class="sc" id="sc-bh">
       <div class="bh-hero">
@@ -596,7 +625,10 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
             <svg viewBox="0 0 40 40" fill="none" width="26" height="26"><circle cx="14" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><circle cx="26" cy="10" r="5" stroke="#F2C98A" stroke-width="2"/><path d="M20 38 C10 30 4 24 4 18 C4 13 7.5 10 12 10 C15 10 17.5 11.5 20 14 C22.5 11.5 25 10 28 10 C32.5 10 36 13 36 18 C36 24 30 30 20 38Z" stroke="#F2C98A" stroke-width="2" fill="none"/></svg>
             <span style="font-family:var(--f-serif);font-size:18px;font-weight:600;color:#fff">Curavio</span>
           </div>
-          <button onclick="doLogout()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Abmelden</button>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button onclick="goTo('sc-benachrichtigungen')" style="position:relative;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer">🔔<span id="notif-badge-b" style="display:none;position:absolute;top:-6px;right:-6px;background:var(--amber);color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;padding:0 3px;line-height:16px;text-align:center">0</span></button>
+            <button onclick="doLogout()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer">Abmelden</button>
+          </div>
         </div>
         <div style="position:relative;z-index:2">
           <div style="font-size:13px;color:rgba(255,255,255,.55);font-weight:500" id="bh-greet">Guten Tag</div>
@@ -789,6 +821,40 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
     </button>
   </nav>
 
+  <!-- Termin absagen (Grund + Ausfallgebühr-Hinweis) -->
+  <div id="modal-cancel" style="display:none;position:absolute;inset:0;background:rgba(26,42,30,.5);z-index:300;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(2px)">
+    <div style="background:var(--cream-lt);border-radius:var(--r-xl);padding:22px;width:100%;box-shadow:var(--s-lg)">
+      <div style="font-family:var(--f-serif);font-size:21px;font-weight:600;color:var(--text)">Termin absagen</div>
+      <div id="mc-warn" style="display:none;background:var(--warn-lt);color:var(--warn);border-radius:var(--r-md);padding:10px 12px;font-size:12px;font-weight:600;margin-top:10px">⚠️ Kurzfristige Absage (&lt; 24h): Es wird eine Ausfallgebühr gemäß AGB berechnet.</div>
+      <div class="fi" style="margin-top:12px"><label>Absagegrund</label>
+        <textarea id="mc-reason" rows="3" placeholder="z.B. Krankenhausaufenthalt, Arzttermin …" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:14px;font-family:var(--f-sans);color:var(--text);background:var(--cream);outline:none;resize:vertical"></textarea>
+      </div>
+      <button class="btn" style="background:var(--danger);color:#fff;margin-top:8px" onclick="confirmCancel()">Termin verbindlich absagen</button>
+      <button onclick="document.getElementById('modal-cancel').style.display='none'" style="width:100%;margin-top:8px;background:none;border:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;padding:8px">Abbrechen</button>
+    </div>
+  </div>
+
+  <!-- Betreuer-Profil (LinkedIn-Style) -->
+  <div id="modal-bprofil" style="display:none;position:absolute;inset:0;background:rgba(26,42,30,.5);z-index:300;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(2px)">
+    <div style="background:var(--cream-lt);border-radius:var(--r-xl);padding:22px;width:100%;max-width:420px;box-shadow:var(--s-lg);max-height:80vh;overflow-y:auto">
+      <button onclick="document.getElementById('modal-bprofil').style.display='none'" style="float:right;background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted)">✕</button>
+      <div style="text-align:center;padding-top:6px">
+        <div style="position:relative;display:inline-block">
+          <div id="bp-avatar" class="av" style="width:80px;height:80px;font-size:30px;background:linear-gradient(135deg,var(--forest),var(--forest-md));margin:0 auto;background-size:cover;background-position:center">?</div>
+          <span id="bp-badge" style="position:absolute;bottom:4px;right:4px;width:14px;height:14px;border-radius:50%;background:#22c55e;border:2.5px solid var(--cream-lt)"></span>
+        </div>
+        <div id="bp-name" style="font-family:var(--f-serif);font-size:22px;font-weight:600;color:var(--text);margin-top:10px">–</div>
+        <div id="bp-quali" style="font-size:12px;color:var(--muted);margin-top:3px">–</div>
+        <div style="display:flex;justify-content:center;gap:22px;margin:16px 0;padding:12px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+          <div style="text-align:center"><div id="bp-einsaetze" style="font-family:var(--f-serif);font-size:21px;font-weight:600;color:var(--forest)">0</div><small style="font-size:10px;color:var(--muted);text-transform:uppercase">Einsätze</small></div>
+          <div style="text-align:center"><div id="bp-bewertung" style="font-family:var(--f-serif);font-size:21px;font-weight:600;color:var(--amber)">–</div><small style="font-size:10px;color:var(--muted);text-transform:uppercase">Bewertung</small></div>
+          <div style="text-align:center"><div id="bp-seit" style="font-family:var(--f-serif);font-size:21px;font-weight:600;color:var(--forest)">–</div><small style="font-size:10px;color:var(--muted);text-transform:uppercase">Dabei seit</small></div>
+        </div>
+      </div>
+      <div id="bp-bewertungen-list" style="text-align:left"></div>
+    </div>
+  </div>
+
   <!-- DSGVO: Einwilligung beim ersten Login -->
   <div id="modal-consent" style="display:none;position:absolute;inset:0;background:var(--forest);z-index:400;flex-direction:column;padding:24px;overflow-y:auto">
     <div style="background:var(--cream-lt);border-radius:var(--r-xl);padding:22px;box-shadow:var(--s-lg);margin:auto 0">
@@ -885,6 +951,8 @@ function goTo(id) {
   if (id === 'sc-chat') { const d = document.getElementById('chat-dot'); if (d) d.style.display = 'none'; }
   if (id === 'sc-fin') loadFinanzen();
   if (id === 'sc-nachweise') loadNachweise();
+  if (id === 'sc-benachrichtigungen') loadNotifScreen();
+  if (id === 'sc-mein-profil') loadMeinProfil();
   // Betreuer-Seiten initialisieren
   if (id === 'sc-bnachweis') loadBNachweise();
   if (id === 'sc-bchat') loadBetreuerMessages();
@@ -994,12 +1062,22 @@ function doLogout() {
 }
 
 function showApp() {
+  const role = USER?.role;
+  // Rollen-Routing absichern: erst alles verstecken, dann gezielt zeigen
+  document.getElementById('bnav').style.display = 'none';
+  document.getElementById('bnav-b').style.display = 'none';
+
+  if (role === 'admin') {
+    // Admin gehört ins Disponenten-Dashboard
+    window.location.href = '/admin';
+    return;
+  }
   connectWS();
-  if (USER?.role === 'betreuer') {
+  updateNotifBadge();
+  if (role === 'betreuer') {
     showBetreuerApp();
   } else {
     document.getElementById('bnav').style.display = 'flex';
-    document.getElementById('bnav-b').style.display = 'none';
     goTo('sc-home');
     const greet = document.getElementById('h-greet');
     const h = new Date().getHours();
@@ -1066,20 +1144,32 @@ function connectWS() {
       if (USER?.role === 'betreuer') { loadBetreuerHome(); loadAuftraege(); }
       else loadVisits();
     }
-    if (msg.type === 'new_assignment') { loadBetreuerHome(); loadAuftraege(); toast('📋 Neuer Auftrag eingegangen!'); showAnfragenBadge(1); }
+    if (msg.type === 'new_assignment') {
+      loadBetreuerHome(); loadAuftraege(); toast('📋 Neuer Auftrag eingegangen!'); showAnfragenBadge(1);
+      if (USER?.role === 'betreuer') addNotif('📋', 'Neuer Auftrag eingegangen – bitte prüfen und annehmen.');
+    }
     if (msg.type === 'new_report') { if (USER?.role !== 'betreuer') { loadReports(); toast('📋 Neuer Besuchsbericht verfügbar'); } }
     if (msg.type === 'route_update' && USER?.role === 'betreuer') {
       const t = msg.new_time ? new Date(msg.new_time).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
       toast('🗺 Tourenplan geändert' + (t ? ' – neuer Termin ' + t + ' Uhr' : ''));
+      addNotif('🗺', msg.message || ('Tourenplan geändert' + (t ? ' – neuer Termin ' + t + ' Uhr' : '')));
       loadBetreuerHome(); loadAuftraege();
     }
     if (msg.type === 'visit_rescheduled' && USER?.role === 'angehoeriger') {
       const t = msg.new_time ? new Date(msg.new_time).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
       toast('🕐 Besuchszeit geändert' + (t ? ' – neu: ' + t + ' Uhr' : ''));
+      addNotif('🕐', msg.message || ('Ihr Termin wurde verschoben' + (t ? ' auf ' + t + ' Uhr' : '') + '.'),
+               { phone: msg.phone || '', betreuer_name: msg.betreuer_name || '' });
       loadVisits();
+    }
+    if (msg.type === 'visit_cancelled') {
+      toast('✕ Ein Termin wurde abgesagt');
+      addNotif('✕', 'Termin wurde abgesagt' + (msg.reason ? ' – Grund: ' + msg.reason : '') + (msg.is_late_cancel ? ' (kurzfristig, Ausfallgebühr)' : ''));
+      if (USER?.role === 'betreuer') { loadBetreuerHome(); loadAuftraege(); } else loadVisits();
     }
     if (msg.type === 'nachweis_created' && USER?.role === 'angehoeriger') {
       toast('✍️ Neuer Leistungsnachweis zum Unterschreiben');
+      addNotif('✍️', 'Neuer Leistungsnachweis liegt zur Unterschrift bereit.');
     }
   };
   // Nur neu verbinden, wenn noch ein gültiger Login vorliegt (Token-Check vor Reconnect)
@@ -1130,11 +1220,18 @@ async function loadVisits() {
                : v.status === 'abgeschlossen' ? '<span class="chip chip-g">Fertig</span>'
                : v.status === 'anfrage' ? '<span class="chip chip-a">Angefragt</span>'
                : v.status === 'abgelehnt' ? '<span class="chip" style="background:var(--danger-lt);color:var(--danger)">Abgelehnt</span>'
+               : v.status === 'abgesagt' ? '<span class="chip" style="background:var(--cream-dk);color:var(--muted)">Abgesagt</span>'
                : '<span class="chip chip-b">Geplant</span>';
     // Bewertung: nach abgeschlossenem Besuch Sterne anzeigen
     const stars = v.status === 'abgeschlossen' && !v.rating
       ? `<div style="margin-top:5px">${[1,2,3,4,5].map(n=>`<span onclick="rateVisit('${v.id}',${n})" style="cursor:pointer;font-size:17px;color:var(--amber)">☆</span>`).join('')} <span style="font-size:10px;color:var(--muted)">Bewerten</span></div>`
       : v.rating ? `<div style="margin-top:3px;font-size:12px;color:var(--amber)">${'★'.repeat(v.rating)}${'☆'.repeat(5-v.rating)}</div>` : '';
+    const betrName = v.betreuer_id && v.betreuer_name
+      ? `<span onclick="openBetreuerProfil('${v.betreuer_id}')" style="text-decoration:underline;cursor:pointer">${v.betreuer_name}</span>`
+      : (v.betreuer_name || '–');
+    const cancelLink = ['anfrage','geplant','bestätigt','offen'].includes(v.status)
+      ? `<div style="margin-top:4px"><a href="#" onclick="openCancelModal('${v.id}','${v.scheduled_at}');return false" style="font-size:11px;color:var(--danger);font-weight:700;text-decoration:none">✕ Termin absagen</a></div>`
+      : '';
     list.innerHTML += `
       <div class="wi">
         <div class="db" style="background:${colors[i%colors.length]};color:var(--cream-lt)">
@@ -1142,8 +1239,8 @@ async function loadVisits() {
         </div>
         <div style="flex:1">
           <div class="wi-t">${(Array.isArray(v.services) && v.services[0]) ? v.services[0] : (v.service || 'Besuch')}</div>
-          <div class="wi-s">${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} · ${v.betreuer_name||'–'} · ${v.duration_min || v.duration || 60} Min.</div>
-          ${stars}
+          <div class="wi-s">${d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} · ${betrName} · ${v.duration_min || v.duration || 60} Min.</div>
+          ${stars}${cancelLink}
         </div>
         ${chip}
       </div>`;
@@ -1344,7 +1441,7 @@ function gbStep(n) {
   ['bs1','bs2','bs3'].forEach((id,i)=>{document.getElementById(id).style.display=(i+1===n)?'block':'none'});
   for(let i=1;i<=3;i++){const c=document.getElementById('bp'+i);c.className='bpc '+(i<n?'done':i===n?'act':'pend');c.textContent=i<n?'✓':i}
   for(let i=1;i<=2;i++){document.getElementById('bl'+i).className='bline '+(i<n?'done':'')}
-  if(n===3) updSum();
+  if(n===3) { updSum(); checkBookingAvailability(); }
   document.getElementById('sc-book').scrollTop=0;
 }
 function updSum() {
@@ -1354,6 +1451,7 @@ function updSum() {
 }
 async function doBook() {
   if (!bk.svc || !bk.iso || !bk.time) { toast('Bitte Leistung, Datum und Zeit wählen'); return; }
+  if (bookAvail.blocked) { toast('❌ Zeit ist belegt – bitte Alternative wählen'); return; }
   const patients = await api('/patients');
   if (!patients.length) { toast('Kein Patient gefunden'); return; }
 
@@ -1541,6 +1639,7 @@ function renderAuftrCard(v, mode) {
     </div>
     ${detail}
     ${stempelBtn}
+    ${canClockin ? `<div style="text-align:center;margin-top:8px"><a href="#" onclick="openCancelModal('${v.id}','${v.scheduled_at}');return false" style="font-size:11px;color:var(--danger);font-weight:700;text-decoration:none">✕ Termin absagen</a></div>` : ''}
   </div>`;
 }
 
@@ -2025,17 +2124,268 @@ async function loadAvailabilityList() {
     : 'Keine Abwesenheiten eingetragen.';
 }
 
-// ─── ETA + Map animation ──────────────────────────────────────────────────────
-let eta=12, mx=135, my=150;
-setInterval(()=>{
-  if(eta>0){ eta--; ['eta-h','eta-t'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=eta}); }
-  if(eta===0) toast('🔔 Maria K. ist angekommen!');
-},9000);
-setInterval(()=>{
-  const pin=document.getElementById('cpin'); if(!pin)return;
-  mx=Math.min(250,mx+(Math.random()*5+1)); my=Math.max(62,my-(Math.random()*4+1));
-  pin.style.left=mx+'px'; pin.style.top=my+'px';
-},3500);
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADRESS-AUTOCOMPLETE (Nominatim/OSM, debounced, DSGVO: nur Adresstext wird gesendet)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function initAddressAutocomplete(inputId, onSelect) {
+  const inp = document.getElementById(inputId);
+  if (!inp || inp.dataset.acInit) return;
+  inp.dataset.acInit = '1';
+  let timeout;
+  const dropdown = document.createElement('ul');
+  dropdown.style.cssText =
+    'position:absolute;z-index:9999;background:var(--cream-lt);border:1.5px solid var(--border-dk);' +
+    'border-radius:10px;list-style:none;margin:2px 0 0;padding:4px 0;max-height:200px;' +
+    'overflow-y:auto;width:100%;box-shadow:var(--s-md);display:none;left:0;top:100%;';
+  inp.parentElement.style.position = 'relative';
+  inp.parentElement.appendChild(dropdown);
+
+  inp.addEventListener('input', () => {
+    clearTimeout(timeout);
+    const q = inp.value.trim();
+    if (q.length < 3) { dropdown.style.display = 'none'; return; }
+    timeout = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=5&countrycodes=de`,
+          { headers: { 'Accept-Language': 'de' } }
+        );
+        const data = await res.json();
+        dropdown.innerHTML = '';
+        if (!data.length) { dropdown.style.display = 'none'; return; }
+        data.forEach(item => {
+          const li = document.createElement('li');
+          li.textContent = item.display_name;
+          li.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:12px;color:var(--text);line-height:1.4';
+          li.onmouseenter = () => li.style.background = 'var(--forest-lt)';
+          li.onmouseleave = () => li.style.background = '';
+          li.onclick = () => {
+            const a = item.address || {};
+            const street = [a.road, a.house_number].filter(Boolean).join(' ');
+            const city = [a.postcode, a.city || a.town || a.village].filter(Boolean).join(' ');
+            const formatted = [street, city].filter(Boolean).join(', ') || item.display_name;
+            inp.value = formatted;
+            dropdown.style.display = 'none';
+            if (onSelect) onSelect({ formatted, lat: parseFloat(item.lat), lng: parseFloat(item.lon), raw: item });
+          };
+          dropdown.appendChild(li);
+        });
+        dropdown.style.display = 'block';
+      } catch { dropdown.style.display = 'none'; }
+    }, 450); // Debounce: Nominatim max. 1 Req/Sek.
+  });
+  document.addEventListener('click', e => { if (!inp.contains(e.target)) dropdown.style.display = 'none'; });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BENACHRICHTIGUNGEN (In-App, pro Nutzer in localStorage)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const notifKey = () => 'curavio_notifs_' + (USER?.id || 'anon');
+function getNotifs() { try { return JSON.parse(localStorage.getItem(notifKey()) || '[]'); } catch { return []; } }
+function saveNotifs(n) { localStorage.setItem(notifKey(), JSON.stringify(n.slice(0, 50))); }
+function addNotif(icon, msg, extra) {
+  const n = getNotifs();
+  n.unshift({ icon, msg, extra: extra || null, ts: Date.now(), read: false });
+  saveNotifs(n); updateNotifBadge();
+}
+function updateNotifBadge() {
+  const c = getNotifs().filter(x => !x.read).length;
+  ['notif-badge', 'notif-badge-b'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = c; el.style.display = c ? 'block' : 'none'; }
+  });
+}
+function loadNotifScreen() {
+  const el = document.getElementById('notif-list');
+  const list = getNotifs();
+  if (!list.length) { el.innerHTML = '<div style="padding:12px 6px;font-size:13px;color:var(--muted)">Keine Benachrichtigungen.</div>'; return; }
+  el.innerHTML = list.map(n => `
+    <div class="card" style="padding:13px 15px;margin-bottom:9px;${n.read ? 'opacity:.65' : 'border-color:var(--amber)'}">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:17px">${n.icon}</span>
+        <div style="flex:1">
+          <div style="font-size:13px;color:var(--text);line-height:1.5">${n.msg}</div>
+          <div style="font-size:10px;color:var(--muted-lt);margin-top:3px">${new Date(n.ts).toLocaleString('de-DE')}</div>
+          ${n.extra?.phone ? `<a href="tel:${n.extra.phone}" style="display:inline-block;margin-top:8px;background:var(--forest);color:var(--cream-lt);border-radius:var(--r-full);padding:7px 14px;font-size:12px;font-weight:700;text-decoration:none">📞 ${n.extra.betreuer_name ? n.extra.betreuer_name + ' ' : 'Betreuer '}anrufen</a>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+  saveNotifs(list.map(n => ({ ...n, read: true })));
+  updateNotifBadge();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TERMINABSAGE (alle Rollen) — Modal + Ausfallgebühr-Hinweis
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let cancelVisitId = null;
+function openCancelModal(id, scheduledAt) {
+  cancelVisitId = id;
+  const hours = (new Date(scheduledAt) - new Date()) / 36e5;
+  document.getElementById('mc-warn').style.display =
+    (USER?.role === 'angehoeriger' && hours < 24 && hours > 0) ? 'block' : 'none';
+  document.getElementById('mc-reason').value = '';
+  document.getElementById('modal-cancel').style.display = 'flex';
+}
+async function confirmCancel() {
+  if (!cancelVisitId) return;
+  const res = await api('/visits/' + cancelVisitId + '/cancel', {
+    method: 'PATCH', body: { reason: document.getElementById('mc-reason').value.trim() }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  document.getElementById('modal-cancel').style.display = 'none';
+  cancelVisitId = null;
+  toast(res.is_late_cancel
+    ? '⚠️ Kurzfristige Absage – Ausfallgebühr wird berechnet' + (res.ausfall_invoice_nr ? ' (' + res.ausfall_invoice_nr + ')' : '')
+    : '✅ Termin abgesagt');
+  if (USER?.role === 'betreuer') { loadBetreuerHome(); loadAuftraege(); }
+  else { loadVisits(); loadFinanzen(); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SMART SCHEDULING — Verfügbarkeits-Check im Buchungs-Flow
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let bookAvail = { blocked: false };
+
+async function checkBookingAvailability() {
+  const banner = document.getElementById('avail-banner');
+  if (!banner) return;
+  bookAvail.blocked = false;
+  banner.style.display = 'none';
+  if (!bk.iso || !bk.time) return;
+  const patients = await api('/patients');
+  const bid = Array.isArray(patients) && patients[0]?.betreuer_id;
+  if (!bid) {
+    banner.style.display = 'block';
+    banner.innerHTML = '<div style="background:var(--success-lt);border:1px solid rgba(45,106,79,.3);border-radius:var(--r-md);padding:11px 14px;font-size:12px;color:var(--success);font-weight:600">✓ Termin wird automatisch dem passenden Betreuer zugewiesen (KI-Disposition).</div>';
+    return;
+  }
+  const r = await api(`/availability/check?betreuer_id=${bid}&date=${bk.iso}&time=${bk.time}&duration_min=${bk.dur}`);
+  if (!r || r.error) return;
+  banner.style.display = 'block';
+  if (r.available) {
+    banner.innerHTML = '<div style="background:var(--success-lt);border:1px solid rgba(45,106,79,.3);border-radius:var(--r-md);padding:11px 14px;font-size:12px;color:var(--success);font-weight:600">✓ Ihr Betreuer ist zu dieser Zeit verfügbar.</div>';
+    return;
+  }
+  bookAvail.blocked = true;
+  const sameAlts = (r.alternatives || []).filter(a => a.type === 'same_betreuer');
+  banner.innerHTML = `
+    <div style="background:var(--danger-lt);border:1px solid rgba(153,27,27,.25);border-radius:var(--r-md);padding:11px 14px;font-size:12px;color:var(--danger);font-weight:600">❌ Ihr Betreuer ist zu dieser Zeit belegt.</div>
+    ${sameAlts.length ? `<div style="font-size:12px;font-weight:700;color:var(--text);margin:10px 0 6px">Freie Alternativen:</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${sameAlts.map(a =>
+        `<button onclick="pickAltTime('${a.time}')" style="background:var(--forest-lt);border:1.5px solid rgba(28,58,42,.25);color:var(--forest);border-radius:var(--r-full);padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer">${a.label}</button>`).join('')}</div>`
+      : '<div style="font-size:12px;color:var(--muted);margin-top:8px">Keine freie Alternative im ±2h-Fenster – bitte anderen Tag wählen.</div>'}`;
+}
+
+function pickAltTime(iso) {
+  const d = new Date(iso);
+  bk.iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  bk.time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  bk.label = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  updSum();
+  toast('Alternative übernommen: ' + bk.label + ' · ' + bk.time + ' Uhr');
+  checkBookingAvailability();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BETREUER-PROFIL (LinkedIn-Style Modal)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function openBetreuerProfil(betreuerId) {
+  const d = await api('/betreuer/' + betreuerId + '/profil');
+  if (!d || d.error) { toast('Profil nicht verfügbar'); return; }
+  const av = document.getElementById('bp-avatar');
+  if (d.avatar_url) { av.style.backgroundImage = `url('${d.avatar_url}')`; av.textContent = ''; }
+  else { av.style.backgroundImage = ''; av.textContent = (d.name || '?').split(' ').map(p => p[0]).join('').substring(0, 2); }
+  document.getElementById('bp-badge').style.background = d.aktiv ? '#22c55e' : '#9ca3af';
+  document.getElementById('bp-name').textContent = d.name;
+  document.getElementById('bp-quali').textContent = (d.qualifications || []).join(' · ') || 'Alltagsbegleitung';
+  document.getElementById('bp-einsaetze').textContent = d.visits_count || 0;
+  document.getElementById('bp-seit').textContent = d.member_since ? new Date(d.member_since).getFullYear() : '–';
+  document.getElementById('bp-bewertung').textContent = d.avg_rating ? '★ ' + parseFloat(d.avg_rating).toFixed(1) : '–';
+  document.getElementById('bp-bewertungen-list').innerHTML = (d.bewertungen || []).slice(0, 5).map(b => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--amber);font-size:13px">${'★'.repeat(b.rating)}${'☆'.repeat(5 - b.rating)}</span>
+      <span style="font-size:10px;color:var(--muted-lt);float:right">${new Date(b.date).toLocaleDateString('de-DE')}</span>
+      <div style="font-size:13px;color:var(--text);margin-top:3px">${b.comment || 'Kein Kommentar'}</div>
+    </div>`).join('') || '<p style="color:var(--muted);font-size:13px;text-align:center;padding:10px 0">Noch keine Bewertungen</p>';
+  document.getElementById('modal-bprofil').style.display = 'flex';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MEIN PROFIL — eigene Daten + Patientendaten bearbeiten (Angehörige)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadMeinProfil() {
+  const me = await api('/auth/me');
+  if (me && !me.error) {
+    document.getElementById('mp-name').value = me.name || '';
+    document.getElementById('mp-phone').value = me.phone || '';
+    document.getElementById('mp-address').value = me.address || '';
+  }
+  initAddressAutocomplete('mp-address');
+  const pats = await api('/patients');
+  const el = document.getElementById('mp-patients');
+  if (!Array.isArray(pats) || !pats.length) { el.innerHTML = '<div style="padding:6px;font-size:13px;color:var(--muted)">Kein Patient zugeordnet.</div>'; return; }
+  el.innerHTML = pats.map(p => `
+    <div class="card" style="padding:16px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:12px">🏡 ${p.name} <span class="chip chip-b" style="margin-left:6px">PG ${p.pflegegrad || 1}</span></div>
+      <div class="fi"><label>Name</label><input id="mpp-name-${p.id}" value="${(p.name || '').replace(/"/g, '&quot;')}"></div>
+      <div class="fi"><label>Adresse</label><input id="mpp-address-${p.id}" value="${(p.address || '').replace(/"/g, '&quot;')}" autocomplete="off"></div>
+      <div class="fi"><label>Telefon</label><input id="mpp-phone-${p.id}" value="${(p.phone || '').replace(/"/g, '&quot;')}"></div>
+      <div class="fi"><label>Versicherung</label><input id="mpp-insurance-${p.id}" value="${(p.insurance || '').replace(/"/g, '&quot;')}"></div>
+      <div class="fi"><label>Hinweise für Betreuer</label><textarea id="mpp-notes-${p.id}" rows="2" style="padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);font-size:14px;font-family:var(--f-sans);background:var(--cream);outline:none;resize:vertical">${p.notes || ''}</textarea></div>
+      <button class="btn btn-f" style="padding:12px" onclick="saveMyPatient('${p.id}')">Speichern ✓</button>
+    </div>`).join('');
+  pats.forEach(p => initAddressAutocomplete('mpp-address-' + p.id));
+}
+
+async function saveMyProfile() {
+  const res = await api('/me/profile', {
+    method: 'PATCH',
+    body: {
+      name: document.getElementById('mp-name').value.trim(),
+      phone: document.getElementById('mp-phone').value.trim(),
+      address: document.getElementById('mp-address').value.trim()
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  USER = { ...USER, name: res.name };
+  localStorage.setItem('curavio_user', JSON.stringify(USER));
+  toast('✅ Profil gespeichert');
+}
+
+async function changeMyPassword() {
+  const oldPw = document.getElementById('mp-oldpw').value;
+  const newPw = document.getElementById('mp-newpw').value;
+  const newPw2 = document.getElementById('mp-newpw2').value;
+  if (!oldPw || !newPw) { toast('Bitte beide Passwörter eingeben'); return; }
+  if (newPw.length < 8) { toast('Neues Passwort: mindestens 8 Zeichen'); return; }
+  if (newPw !== newPw2) { toast('Passwörter stimmen nicht überein'); return; }
+  const res = await api('/me/profile', { method: 'PATCH', body: { password: newPw, old_password: oldPw } });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  ['mp-oldpw', 'mp-newpw', 'mp-newpw2'].forEach(i => document.getElementById(i).value = '');
+  toast('✅ Passwort geändert');
+}
+
+async function saveMyPatient(pid) {
+  const res = await api('/me/patient/' + pid, {
+    method: 'PATCH',
+    body: {
+      name: document.getElementById('mpp-name-' + pid).value.trim(),
+      address: document.getElementById('mpp-address-' + pid).value.trim(),
+      phone: document.getElementById('mpp-phone-' + pid).value.trim(),
+      insurance: document.getElementById('mpp-insurance-' + pid).value.trim(),
+      notes: document.getElementById('mpp-notes-' + pid).value.trim()
+    }
+  });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ Patientendaten gespeichert');
+  loadPatient();
+}
 </script>
 <script>
 if ('serviceWorker' in navigator) {
