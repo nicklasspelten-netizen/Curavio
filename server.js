@@ -11,6 +11,7 @@ const PDFDocument = require('pdfkit');
 const crypto = require('crypto');
 const https = require('https');
 const rateLimit = require('express-rate-limit');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -85,6 +86,119 @@ async function audit(req, action, resourceType, resourceId) {
 
 const gid = (p) => p + '_' + uuidv4().replace(/-/g, '').substring(0, 12);
 const num = (x) => parseFloat(x || 0) || 0;
+const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// ═══════════════════════════════════════════════════════════════
+//  E-MAIL-VERSAND (nodemailer) — Konfig aus ENV oder Admin-Einstellungen
+// ═══════════════════════════════════════════════════════════════
+const APP_URL = process.env.APP_URL || 'https://curavio.onrender.com';
+let _mailCache = { key: null, transport: null };
+
+// SMTP-Konfiguration: ENV hat Vorrang, sonst aus settings-Tabelle (Passwort verschlüsselt)
+async function getMailConfig() {
+  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+    return {
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      secure: String(process.env.SMTP_SECURE) === 'true' || parseInt(process.env.SMTP_PORT) === 465,
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS || '',
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      source: 'env'
+    };
+  }
+  const s = await getSettings();
+  if (s.smtp_host && s.smtp_user) {
+    return {
+      host: s.smtp_host,
+      port: parseInt(s.smtp_port) || 587,
+      secure: s.smtp_secure === 'true' || parseInt(s.smtp_port) === 465,
+      user: s.smtp_user,
+      pass: decryptField(s.smtp_pass || ''),
+      from: s.smtp_from || s.firma_email || s.smtp_user,
+      source: 'settings'
+    };
+  }
+  return null;
+}
+
+async function getTransport() {
+  const cfg = await getMailConfig();
+  if (!cfg) return null;
+  const key = `${cfg.host}:${cfg.port}:${cfg.user}:${cfg.secure}`;
+  if (_mailCache.key !== key) {
+    _mailCache = {
+      key,
+      transport: nodemailer.createTransport({
+        host: cfg.host, port: cfg.port, secure: cfg.secure,
+        auth: { user: cfg.user, pass: cfg.pass }
+      }),
+      from: cfg.from
+    };
+  }
+  return _mailCache;
+}
+
+// HTML-Rahmen im Curavio-Look
+function mailLayout(title, bodyHtml, settings) {
+  const firma = settings?.firma_name || 'Curavio';
+  return `<!DOCTYPE html><html><body style="margin:0;background:#F7F2E4;font-family:Arial,Helvetica,sans-serif;color:#1A2A1E">
+  <div style="max-width:560px;margin:0 auto;padding:24px">
+    <div style="background:#1C3A2A;border-radius:16px 16px 0 0;padding:22px 26px">
+      <div style="color:#F2C98A;font-size:24px;font-weight:bold">Curavio</div>
+      <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:2px">Entlastung. Alltag. Vertrauen.</div>
+    </div>
+    <div style="background:#FDFAF2;border:1px solid #E0D9C8;border-top:none;border-radius:0 0 16px 16px;padding:26px">
+      <h2 style="margin:0 0 14px;font-size:19px;color:#1C3A2A">${escapeHtml(title)}</h2>
+      ${bodyHtml}
+      <div style="margin-top:22px;padding-top:16px;border-top:1px solid #E0D9C8;font-size:12px;color:#6E7B72">
+        ${escapeHtml(firma)}${settings?.firma_adresse ? ' · ' + escapeHtml(settings.firma_adresse) : ''}<br>
+        Diese E-Mail wurde automatisch von Curavio gesendet.
+      </div>
+    </div>
+  </div></body></html>`;
+}
+
+// Zentrale Versandfunktion. Ohne Konfiguration: kein Fehler, nur Log (graceful).
+async function sendMail({ to, subject, html, text }) {
+  if (!to) return { skipped: true, reason: 'kein Empfänger' };
+  try {
+    const t = await getTransport();
+    if (!t || !t.transport) {
+      console.log(`[EMAIL – nicht konfiguriert] an ${to}: ${subject}`);
+      return { skipped: true, reason: 'SMTP nicht konfiguriert' };
+    }
+    const info = await t.transport.sendMail({
+      from: t.from, to, subject,
+      text: text || subject,
+      html: html || `<p>${escapeHtml(text || subject)}</p>`
+    });
+    console.log(`[EMAIL gesendet] an ${to}: ${subject} (${info.messageId})`);
+    return { sent: true, messageId: info.messageId };
+  } catch (e) {
+    console.error(`[EMAIL Fehler] an ${to}: ${e.message}`);
+    return { error: e.message };
+  }
+}
+
+// E-Mail-Adressen der Angehörigen eines Patienten
+async function emailsForPatient(patientId) {
+  try {
+    const p = (await pool.query('SELECT angehoerige_ids FROM patients WHERE id=$1', [patientId])).rows[0];
+    if (!p) return [];
+    const ids = JSON.parse(p.angehoerige_ids || '[]');
+    if (!ids.length) return [];
+    const { rows } = await pool.query(
+      `SELECT email FROM users WHERE id = ANY($1::varchar[]) AND active IS NOT FALSE AND email NOT LIKE 'deleted_%'`, [ids]);
+    return rows.map(r => r.email).filter(Boolean);
+  } catch { return []; }
+}
+async function emailForUser(userId) {
+  try {
+    const { rows } = await pool.query("SELECT email FROM users WHERE id=$1 AND email NOT LIKE 'deleted_%'", [userId]);
+    return rows[0]?.email || null;
+  } catch { return null; }
+}
 
 // Pflegegeld pro Monat nach Pflegegrad (Richtwerte, in Einstellungen/Freibeträgen anpassbar)
 const PFLEGEGELD = { 1: 0, 2: 347, 3: 599, 4: 800, 5: 990 };
@@ -204,10 +318,6 @@ async function initDB() {
 
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS tasks_done TEXT DEFAULT '[]';
 
-      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS entlastungsbetrag_abzug DECIMAL(10,2) DEFAULT 0;
-      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS verhinderungspflege_abzug DECIMAL(10,2) DEFAULT 0;
-      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS leistungsnachweis_id VARCHAR(50);
-
       -- ===== DSGVO-Tabellen =====
       CREATE TABLE IF NOT EXISTS audit_log (
         id SERIAL PRIMARY KEY,
@@ -286,6 +396,10 @@ async function initDB() {
         created_by VARCHAR(50),
         created_at TIMESTAMP DEFAULT NOW()
       );
+      -- invoices-Migrationen NACH dem CREATE (sonst Fehler auf frischer DB)
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS entlastungsbetrag_abzug DECIMAL(10,2) DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS verhinderungspflege_abzug DECIMAL(10,2) DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS leistungsnachweis_id VARCHAR(50);
       CREATE TABLE IF NOT EXISTS payments (
         id VARCHAR(50) PRIMARY KEY,
         invoice_id VARCHAR(50) REFERENCES invoices(id),
@@ -377,7 +491,10 @@ async function initDB() {
       mwst_satz: '0',
       mwst_hinweis: 'Umsatzsteuerfrei gemäß §4 Nr.16 UStG (soziale Dienstleistung)',
       zahlungsziel_tage: '14',
-      datenschutz_hinweis_absage: 'Bei kurzfristiger Absage (< 24 Stunden vor Termin) wird eine Ausfallgebühr gemäß unserer AGB erhoben. Die Verarbeitung Ihrer Buchungsdaten zur Rechnungsstellung erfolgt auf Basis von Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).'
+      datenschutz_hinweis_absage: 'Bei kurzfristiger Absage (< 24 Stunden vor Termin) wird eine Ausfallgebühr gemäß unserer AGB erhoben. Die Verarbeitung Ihrer Buchungsdaten zur Rechnungsstellung erfolgt auf Basis von Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).',
+      // E-Mail-Versand (leer = inaktiv; alternativ via ENV SMTP_HOST/SMTP_USER/SMTP_PASS)
+      smtp_host: '', smtp_port: '587', smtp_user: '', smtp_pass: '', smtp_from: '', smtp_secure: 'false',
+      mail_notifications: 'true'
     };
     for (const [k, v] of Object.entries(defaults)) {
       await client.query('INSERT INTO settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING', [k, v]);
@@ -580,6 +697,19 @@ app.post('/api/auth/register', loginLimiter, async (req, res) => {
       [id, name, email.toLowerCase(), hashed, safeRole]
     );
     await audit(req, 'user_registered', 'user', id);
+    // Willkommens-E-Mail (asynchron, blockiert die Antwort nicht)
+    setImmediate(async () => {
+      const settings = await getSettings();
+      await sendMail({
+        to: email.toLowerCase(),
+        subject: 'Willkommen bei Curavio',
+        html: mailLayout(`Willkommen, ${escapeHtml(name)}!`,
+          `<p>Ihr Curavio-Konto wurde erfolgreich erstellt.</p>
+           <p>Sie können sich ab sofort anmelden und Termine verwalten, Berichte einsehen und mit Ihrer Betreuungskraft kommunizieren.</p>
+           <p style="margin-top:18px"><a href="${APP_URL}" style="background:#C47B3A;color:#fff;text-decoration:none;padding:11px 22px;border-radius:10px;font-weight:bold;display:inline-block">Zur App →</a></p>`,
+          settings)
+      });
+    });
     res.json({ success: true, message: 'Registrierung erfolgreich' });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'E-Mail bereits registriert' });
@@ -798,6 +928,30 @@ app.post('/api/visits', auth, async (req, res) => {
     notifyNewAssignment(rows[0]);
     notifyVisitUpdate(id);
 
+    // Buchungsbestätigung per E-Mail an die Angehörigen (asynchron)
+    setImmediate(async () => {
+      const settings = await getSettings();
+      const emails = await emailsForPatient(patient_id);
+      if (!emails.length) return;
+      const dt = new Date(scheduled_at);
+      const when = dt.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) +
+                   ' um ' + dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+      await sendMail({
+        to: emails.join(','),
+        subject: `Terminbestätigung – ${pat.name}`,
+        html: mailLayout('Ihr Termin ist eingegangen',
+          `<p>Für <b>${escapeHtml(pat.name)}</b> wurde folgender Besuch ${status === 'anfrage' ? 'angefragt' : 'geplant'}:</p>
+           <table style="font-size:14px;margin:12px 0">
+             <tr><td style="padding:3px 12px 3px 0;color:#6E7B72">Leistung</td><td><b>${escapeHtml(svc || 'Alltagsbegleitung')}</b></td></tr>
+             <tr><td style="padding:3px 12px 3px 0;color:#6E7B72">Termin</td><td><b>${escapeHtml(when)}</b></td></tr>
+             <tr><td style="padding:3px 12px 3px 0;color:#6E7B72">Dauer</td><td>${dur} Minuten</td></tr>
+             <tr><td style="padding:3px 12px 3px 0;color:#6E7B72">Status</td><td>${status === 'anfrage' ? 'Wird disponiert – Sie erhalten die Bestätigung der Betreuungskraft.' : 'Geplant'}</td></tr>
+           </table>
+           <p style="margin-top:16px"><a href="${APP_URL}" style="background:#1C3A2A;color:#fff;text-decoration:none;padding:10px 20px;border-radius:10px;font-weight:bold;display:inline-block">Termin in der App ansehen →</a></p>`,
+          settings)
+      });
+    });
+
     // KI-Disposition: offene Anfragen vollautomatisch zuweisen (asynchron, blockiert Antwort nicht)
     if (status === 'anfrage') {
       setImmediate(() => aiDispatchVisit(id).catch(e => console.error('[KI-Dispatch]', e.message)));
@@ -907,8 +1061,26 @@ app.patch('/api/visits/:id/cancel', auth, async (req, res) => {
       is_late_cancel: isLateCancel, ausfall_invoice_id: ausfallInvoiceId
     });
     notifyVisitUpdate(req.params.id);
-    // E-Mail-Platzhalter (kein SMTP konfiguriert)
-    console.log(`[EMAIL] Absage-Benachrichtigung: Besuch ${req.params.id} durch ${role}${isLateCancel ? ' – Ausfallrechnung ' + ausfallInvoiceNr : ''}`);
+
+    // Absage-Benachrichtigung per E-Mail an Angehörige + zugewiesene Betreuungskraft
+    setImmediate(async () => {
+      const settings = await getSettings();
+      const dt = new Date(visit.scheduled_at);
+      const when = dt.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' }) +
+                   ' um ' + dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+      const recips = new Set(await emailsForPatient(visit.patient_id));
+      if (visit.betreuer_id) { const be = await emailForUser(visit.betreuer_id); if (be) recips.add(be); }
+      if (!recips.size) return;
+      await sendMail({
+        to: [...recips].join(','),
+        subject: `Termin abgesagt – ${when}`,
+        html: mailLayout('Ein Termin wurde abgesagt',
+          `<p>Der Besuch am <b>${escapeHtml(when)}</b> wurde abgesagt${reason ? ` (Grund: ${escapeHtml(reason)})` : ''}.</p>
+           ${isLateCancel ? `<p style="background:#FEF3C7;border-radius:8px;padding:12px;color:#B45309">⚠️ Da die Absage kurzfristig (weniger als 24 Stunden vorher) erfolgte, wird gemäß AGB eine Ausfallgebühr berechnet (Rechnung ${escapeHtml(ausfallInvoiceNr)}).</p>` : ''}
+           <p style="margin-top:16px"><a href="${APP_URL}" style="background:#1C3A2A;color:#fff;text-decoration:none;padding:10px 20px;border-radius:10px;font-weight:bold;display:inline-block">Zur App →</a></p>`,
+          settings)
+      });
+    });
 
     res.json({ ok: true, is_late_cancel: isLateCancel, ausfall_invoice_id: ausfallInvoiceId, ausfall_invoice_nr: ausfallInvoiceNr });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1001,7 +1173,7 @@ app.get('/api/admin/bookings/eingang', auth, adminOnly, async (req, res) => {
       SELECT v.id, v.created_at, v.scheduled_at, v.service, v.services, v.status, v.duration_min,
              v.betreuer_id, v.ai_dispatch_note, v.ai_dispatch_confidence, v.dispatch_overridden,
              p.name as patient_name,
-             (SELECT name FROM users WHERE id = (p.angehoerige_ids::json->>0)) as angehoerige_name,
+             (SELECT name FROM users WHERE id = (NULLIF(p.angehoerige_ids,'')::json->>0)) as angehoerige_name,
              u.name as betreuer_name
       FROM visits v
       LEFT JOIN patients p ON v.patient_id = p.id
@@ -1546,6 +1718,24 @@ app.patch('/api/admin/invoices/:id/status', auth, adminOnly, async (req, res) =>
       `UPDATE invoices SET status=$1, paid_at = CASE WHEN $1='bezahlt' THEN NOW() ELSE paid_at END WHERE id=$2 RETURNING *`,
       [status, req.params.id]
     );
+    // Beim Versenden: Rechnung per E-Mail an den Kunden (Angehörige)
+    if (status === 'versendet' && inv.status !== 'versendet' && inv.type === 'kunde') {
+      setImmediate(async () => {
+        const settings = await getSettings();
+        const emails = await emailsForPatient(inv.recipient_id);
+        if (!emails.length) return;
+        await sendMail({
+          to: emails.join(','),
+          subject: `Ihre Rechnung ${inv.invoice_number}`,
+          html: mailLayout(`Rechnung ${escapeHtml(inv.invoice_number)}`,
+            `<p>Im Anhang Ihrer Curavio-App finden Sie Ihre Rechnung über <b>${eur(inv.total_brutto)}</b>.</p>
+             <p>Fällig bis: <b>${deDate(inv.due_date)}</b></p>
+             ${num(inv.freibetrag_35a) > 0 ? `<p style="font-size:13px;color:#A8652E">Hinweis: Diese Leistung ist gemäß §35a EStG steuerlich absetzbar (mögliche Ermäßigung ${eur(inv.freibetrag_35a)}).</p>` : ''}
+             <p style="margin-top:16px"><a href="${APP_URL}" style="background:#1C3A2A;color:#fff;text-decoration:none;padding:10px 20px;border-radius:10px;font-weight:bold;display:inline-block">Rechnung in der App öffnen →</a></p>`,
+            settings)
+        });
+      });
+    }
     res.json(parseInvoice(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2230,6 +2420,19 @@ app.post('/api/admin/users', auth, adminOnly, async (req, res) => {
        birth_date || null, hired_at || null, employment_type || '', hr_notes || '']
     );
     await audit(req, 'user_created', 'user', rows[0].id);
+    // Willkommens-E-Mail an das neue Konto (Zugangsdaten nennt der Admin separat)
+    setImmediate(async () => {
+      const settings = await getSettings();
+      await sendMail({
+        to: email.toLowerCase(),
+        subject: 'Ihr Curavio-Zugang wurde angelegt',
+        html: mailLayout(`Willkommen bei Curavio, ${escapeHtml(name)}!`,
+          `<p>Für Sie wurde ein Curavio-Konto als <b>${escapeHtml(role === 'betreuer' ? 'Betreuungskraft' : role === 'admin' ? 'Verwaltung' : 'Angehörige(r)')}</b> angelegt.</p>
+           <p>Ihre Anmelde-E-Mail: <b>${escapeHtml(email.toLowerCase())}</b><br>Das Start-Passwort erhalten Sie von Ihrer Verwaltung.</p>
+           <p style="margin-top:16px"><a href="${APP_URL}" style="background:#C47B3A;color:#fff;text-decoration:none;padding:11px 22px;border-radius:10px;font-weight:bold;display:inline-block">Zur App →</a></p>`,
+          settings)
+      });
+    });
     // Heimatkoordinaten: aus Autocomplete übernehmen, sonst asynchron geocodieren
     if (home_lat != null && home_lng != null && !isNaN(parseFloat(home_lat))) {
       await pool.query('UPDATE users SET home_lat=$1, home_lng=$2 WHERE id=$3', [parseFloat(home_lat), parseFloat(home_lng), rows[0].id]);
@@ -2268,17 +2471,56 @@ app.post('/api/admin/demo', auth, adminOnly, async (req, res) => {
 });
 
 // ===== EINSTELLUNGEN =====
+// SMTP-Passwort nie im Klartext ausliefern – nur Status (gesetzt/leer)
+function maskSettings(s) {
+  const out = { ...s };
+  out.smtp_pass = (s.smtp_pass && s.smtp_pass.length) ? '••••••••' : '';
+  return out;
+}
+
 app.get('/api/admin/settings', auth, adminOnly, async (req, res) => {
-  try { res.json(await getSettings()); } catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const s = maskSettings(await getSettings());
+    s.mail_env_configured = !!(process.env.SMTP_HOST && process.env.SMTP_USER); // SMTP via ENV gesetzt?
+    res.json(s);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/admin/settings', auth, adminOnly, async (req, res) => {
   try {
     for (const [k, v] of Object.entries(req.body || {})) {
-      await pool.query('INSERT INTO settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2', [k, String(v)]);
+      let val = String(v);
+      // SMTP-Passwort verschlüsselt ablegen; maskierten Platzhalter ignorieren
+      if (k === 'smtp_pass') {
+        if (val.startsWith('••')) continue;        // unverändert gelassen
+        val = val ? encryptField(val) : '';
+      }
+      await pool.query('INSERT INTO settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2', [k, val]);
     }
-    res.json(await getSettings());
+    _mailCache = { key: null, transport: null }; // Transport neu aufbauen
+    await audit(req, 'settings_updated', 'settings', Object.keys(req.body || {}).join(','));
+    res.json(maskSettings(await getSettings()));
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// E-Mail-Status + Test-Mail
+app.get('/api/admin/mail/status', auth, adminOnly, async (req, res) => {
+  const cfg = await getMailConfig();
+  res.json({ configured: !!cfg, source: cfg?.source || null, from: cfg?.from || null, host: cfg?.host || null });
+});
+
+app.post('/api/admin/mail/test', auth, adminOnly, async (req, res) => {
+  const to = req.body?.to;
+  if (!to) return res.status(400).json({ error: 'Empfänger-E-Mail (to) erforderlich' });
+  const settings = await getSettings();
+  const r = await sendMail({
+    to, subject: 'Curavio – Test-E-Mail',
+    html: mailLayout('Test-E-Mail erfolgreich', '<p>Diese Test-E-Mail bestätigt, dass der E-Mail-Versand von Curavio korrekt konfiguriert ist. 🎉</p>', settings)
+  });
+  await audit(req, 'mail_test', 'mail', to);
+  if (r.error) return res.status(502).json({ error: 'Versand fehlgeschlagen: ' + r.error });
+  if (r.skipped) return res.status(400).json({ error: 'E-Mail nicht konfiguriert (SMTP-Daten fehlen).' });
+  res.json({ success: true, message: 'Test-E-Mail an ' + to + ' gesendet.' });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2951,8 +3193,21 @@ app.patch('/api/admin/route/apply', auth, adminOnly, async (req, res) => {
                       patient_id: old.patient_id, betreuer_name: betr?.name || '', phone: betr?.phone || '',
                       message: `Ihr Termin am ${fmtD} wurde auf ${fmtT} Uhr verschoben.` },
           ws => angIds.includes(ws.userId));
-        // E-Mail-Platzhalter (kein SMTP konfiguriert)
-        console.log(`[EMAIL] Terminänderung Besuch ${c.visit_id}: neu ${fmtD} ${fmtT} Uhr`);
+        // E-Mail an die Angehörigen über die Terminverschiebung
+        setImmediate(async () => {
+          const settings = await getSettings();
+          const emails = await emailsForPatient(old.patient_id);
+          if (!emails.length) return;
+          await sendMail({
+            to: emails.join(','),
+            subject: `Terminänderung – neuer Termin ${fmtD}, ${fmtT} Uhr`,
+            html: mailLayout('Ihr Termin wurde verschoben',
+              `<p>Ihr Besuch wurde auf <b>${fmtD}, ${fmtT} Uhr</b> verschoben.</p>
+               ${betr?.name ? `<p>Betreuungskraft: <b>${escapeHtml(betr.name)}</b>${betr.phone ? ` · <a href="tel:${escapeHtml(betr.phone)}">${escapeHtml(betr.phone)}</a>` : ''}</p>` : ''}
+               <p style="margin-top:16px"><a href="${APP_URL}" style="background:#1C3A2A;color:#fff;text-decoration:none;padding:10px 20px;border-radius:10px;font-weight:bold;display:inline-block">Zur App →</a></p>`,
+              settings)
+          });
+        });
       }
     }
     await audit(req, 'route_applied', 'route', applied.length + ' Besuche');

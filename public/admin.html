@@ -424,6 +424,36 @@ a.plink:hover{text-decoration:underline}
         </div>
       </div>
 
+      <div class="card">
+        <h3>📧 E-Mail-Versand (SMTP) <span class="muted" id="mail-status">– Status wird geladen …</span></h3>
+        <div class="muted" style="margin-bottom:12px">
+          Für automatische E-Mails (Buchungsbestätigung, Terminänderung, Absage, Rechnung, Willkommen).
+          Bei einem Gmail-Konto z.&nbsp;B. ein <b>App-Passwort</b> verwenden (Host smtp.gmail.com, Port 587).
+          Alternativ über Render-Umgebungsvariablen (SMTP_HOST, SMTP_USER, SMTP_PASS) – diese haben Vorrang.
+        </div>
+        <div id="mail-env-hint" style="display:none;background:var(--info-lt);color:var(--info);border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px">
+          ℹ️ SMTP ist bereits über Render-Umgebungsvariablen konfiguriert – die Felder unten werden dann ignoriert.
+        </div>
+        <div class="frow">
+          <div class="fi" style="flex:2"><label>SMTP-Host</label><input id="s-smtp_host" placeholder="smtp.gmail.com"></div>
+          <div class="fi" style="flex:0 0 110px"><label>Port</label><input id="s-smtp_port" placeholder="587"></div>
+          <div class="fi" style="flex:0 0 150px"><label>SSL/TLS (Port 465)</label>
+            <select id="s-smtp_secure"><option value="false">STARTTLS (587)</option><option value="true">SSL (465)</option></select>
+          </div>
+        </div>
+        <div class="frow" style="margin-top:12px">
+          <div class="fi"><label>Benutzer / E-Mail</label><input id="s-smtp_user" placeholder="info@curavio.de"></div>
+          <div class="fi"><label>Passwort / App-Passwort</label><input type="password" id="s-smtp_pass" placeholder="••••••••"></div>
+          <div class="fi"><label>Absender (From)</label><input id="s-smtp_from" placeholder="Curavio <info@curavio.de>"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:12px"><input type="checkbox" id="s-mail_notifications"> Automatische Benachrichtigungs-E-Mails aktiv</label>
+        <div style="display:flex;gap:10px;margin-top:14px;align-items:flex-end;flex-wrap:wrap">
+          <button class="btn btn-f btn-sm" onclick="saveSettings()">SMTP speichern ✓</button>
+          <div class="fi" style="flex:0 0 240px;margin:0"><label>Test-E-Mail an</label><input id="mail-test-to" placeholder="ihre@email.de"></div>
+          <button class="btn btn-a btn-sm" onclick="sendTestMail()">Test-E-Mail senden</button>
+        </div>
+      </div>
+
       <div class="grid2">
         <div class="card">
           <h3>🛡 DSGVO – Technische &amp; organisatorische Maßnahmen</h3>
@@ -1810,20 +1840,53 @@ async function loadAuditLog() {
 }
 
 // ─── Einstellungen ───────────────────────────────────────────────────────────
-const SETTING_KEYS = ['firma_name','firma_adresse','firma_telefon','firma_email','firma_bank','firma_iban','firma_steuernummer','firma_ik_nummer','firma_anerkennung','default_hourly_rate','mwst_satz','mwst_hinweis','zahlungsziel_tage'];
+const SETTING_KEYS = ['firma_name','firma_adresse','firma_telefon','firma_email','firma_bank','firma_iban','firma_steuernummer','firma_ik_nummer','firma_anerkennung','default_hourly_rate','mwst_satz','mwst_hinweis','zahlungsziel_tage','smtp_host','smtp_port','smtp_secure','smtp_user','smtp_pass','smtp_from'];
 
 async function loadSettings() {
   const s = await api('/admin/settings');
   if (s.error) return;
-  SETTING_KEYS.forEach(k => { const el = document.getElementById('s-' + k); if (el) el.value = s[k] || ''; });
+  SETTING_KEYS.forEach(k => { const el = document.getElementById('s-' + k); if (el) el.value = (k === 'smtp_pass' ? '' : (s[k] || '')); });
+  // SMTP-Passwort: Platzhalter wenn gesetzt
+  const pw = document.getElementById('s-smtp_pass');
+  if (pw) pw.placeholder = (s.smtp_pass ? '•••••••• (gespeichert)' : '••••••••');
+  const notif = document.getElementById('s-mail_notifications');
+  if (notif) notif.checked = s.mail_notifications !== 'false';
+  // ENV-Konfiguration vorhanden?
+  document.getElementById('mail-env-hint').style.display = s.mail_env_configured ? 'block' : 'none';
+  loadMailStatus();
+}
+
+async function loadMailStatus() {
+  const st = await api('/admin/mail/status').catch(() => null);
+  const el = document.getElementById('mail-status');
+  if (!el) return;
+  if (st && st.configured) el.innerHTML = `<span style="color:var(--success)">● konfiguriert (${esc(st.source)}${st.from ? ', Absender ' + esc(st.from) : ''})</span>`;
+  else el.innerHTML = '<span style="color:var(--warn)">● nicht konfiguriert – E-Mails werden nicht versendet</span>';
 }
 
 async function saveSettings() {
   const body = {};
-  SETTING_KEYS.forEach(k => { const el = document.getElementById('s-' + k); if (el) body[k] = el.value; });
+  SETTING_KEYS.forEach(k => {
+    const el = document.getElementById('s-' + k); if (!el) return;
+    if (k === 'smtp_pass' && !el.value) return; // leer = unverändert lassen
+    body[k] = el.value;
+  });
+  const notif = document.getElementById('s-mail_notifications');
+  if (notif) body.mail_notifications = notif.checked ? 'true' : 'false';
   const res = await api('/admin/settings', { method: 'PUT', body });
   if (res.error) { toast('Fehler: ' + res.error); return; }
   toast('✅ Einstellungen gespeichert');
+  const pw = document.getElementById('s-smtp_pass'); if (pw) pw.value = '';
+  loadSettings();
+}
+
+async function sendTestMail() {
+  const to = document.getElementById('mail-test-to').value.trim();
+  if (!to) { toast('Bitte Empfänger-E-Mail eingeben'); return; }
+  toast('Sende Test-E-Mail …');
+  const res = await api('/admin/mail/test', { method: 'POST', body: { to } });
+  if (res.error) { toast('Fehler: ' + res.error); return; }
+  toast('✅ ' + (res.message || 'Test-E-Mail gesendet'));
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
