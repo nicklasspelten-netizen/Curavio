@@ -133,7 +133,8 @@ a.plink:hover{text-decoration:underline}
     <div id="login-err" class="err"></div>
     <div class="fi"><label>E-Mail</label><input type="email" id="li-email" placeholder="admin@curavio.de"></div>
     <div class="fi"><label>Passwort</label><input type="password" id="li-pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
-    <button class="btn btn-a" style="width:100%;margin-top:6px" onclick="doLogin()">Anmelden →</button>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:2px 0 10px;cursor:pointer"><input type="checkbox" id="li-remember"> Angemeldet bleiben</label>
+    <button class="btn btn-a" style="width:100%" onclick="doLogin()">Anmelden →</button>
   </div>
 </div>
 
@@ -677,10 +678,9 @@ a.plink:hover{text-decoration:underline}
 <script>
 // ─── Basis ───────────────────────────────────────────────────────────────────
 const API = window.location.origin + '/api';
-// Sitzung nur im Arbeitsspeicher – immer erst anmelden, kein automatisches Wieder-Einloggen
+// Standard: Sitzung nur im Arbeitsspeicher. Nur bei "Angemeldet bleiben" persistent.
 let TOKEN = null;
 let USER  = null;
-try { localStorage.removeItem('curavio_admin_token'); localStorage.removeItem('curavio_admin_user'); } catch {}
 let ws = null;
 let CACHE = { patients: [], betreuer: [], invoices: [] };
 
@@ -711,7 +711,15 @@ async function doLogin() {
   }).then(r => r.json()).catch(() => ({ error: 'Server nicht erreichbar' }));
   if (data.error) { err.textContent = data.error; err.style.display = 'block'; return; }
   if (data.user.role !== 'admin') { err.textContent = 'Kein Admin-Konto. Zugriff verweigert.'; err.style.display = 'block'; return; }
-  TOKEN = data.token; USER = data.user; // nur im Arbeitsspeicher, keine persistente Sitzung
+  TOKEN = data.token; USER = data.user;
+  // "Angemeldet bleiben": nur dann Sitzung auf dem Gerät speichern
+  if (document.getElementById('li-remember')?.checked) {
+    localStorage.setItem('curavio_admin_token', TOKEN);
+    localStorage.setItem('curavio_admin_user', JSON.stringify(USER));
+  } else {
+    localStorage.removeItem('curavio_admin_token');
+    localStorage.removeItem('curavio_admin_user');
+  }
   // DSGVO: Einwilligung beim ersten Login
   if (data.consent_required) {
     if (!confirm('Datenschutzerklärung & Nutzungsbedingungen (Version ' + (data.consent_version || '2026-06') + ') akzeptieren?\n\nVerarbeitung von Gesundheitsdaten nach Art. 9 DSGVO zum Zweck der Pflegeorganisation. Volltext in der Klienten-App unter "Datenschutzerklärung". Ohne Einwilligung ist keine Nutzung möglich.')) {
@@ -1819,7 +1827,15 @@ async function saveSettings() {
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
-// Kein automatisches Anmelden: Es wird immer zuerst der Login angezeigt.
+// "Angemeldet bleiben": gespeicherte Admin-Sitzung fortsetzen, sonst Login zeigen
+(function resumeAdminSession() {
+  const t = localStorage.getItem('curavio_admin_token');
+  const u = localStorage.getItem('curavio_admin_user');
+  if (t && u) {
+    try { TOKEN = t; USER = JSON.parse(u); } catch { USER = null; }
+    if (TOKEN && USER && USER.role === 'admin') showApp();
+  }
+})();
 </script>
 </body>
 </html>

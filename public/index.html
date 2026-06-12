@@ -351,8 +351,9 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
         <h3>Willkommen zurück</h3>
         <div id="login-err" class="login-err"></div>
         <div class="fi"><label>E-Mail</label><input type="email" id="li-email" value="thomas@demo.de" placeholder="ihre@email.de"></div>
-        <div class="fi"><label>Passwort</label><input type="password" id="li-pw" value="curavio123" placeholder="••••••••"></div>
-        <button class="btn btn-a" style="margin-top:6px" onclick="doLogin()">Anmelden →</button>
+        <div class="fi"><label>Passwort</label><input type="password" id="li-pw" value="curavio123" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:2px 0 10px;cursor:pointer"><input type="checkbox" id="li-remember" style="width:16px;height:16px"> Angemeldet bleiben</label>
+        <button class="btn btn-a" onclick="doLogin()">Anmelden →</button>
         <div class="login-note">Demo: thomas@demo.de / curavio123</div>
         <div class="login-note" style="margin-top:6px"><a href="#" onclick="showConsentModal(true);return false" style="color:var(--forest);font-weight:700">Datenschutzerklärung</a> · Keine Tracker, keine externen Dienste</div>
       </div>
@@ -911,24 +912,39 @@ body{font-family:var(--f-sans);background:linear-gradient(135deg,#E8E0CE,#D4CCBA
 <script>
 // ─── Config ───────────────────────────────────────────────────────────────────
 const API = window.location.origin + '/api';
-// Sitzung NUR im Arbeitsspeicher – kein automatisches Anmelden, immer erst Login.
+// Sitzung standardmäßig nur im Arbeitsspeicher. Nur bei "Angemeldet bleiben"
+// wird sie in localStorage gespeichert und beim nächsten Start fortgesetzt.
 let TOKEN = null;
 let USER  = null;
 let ws    = null;
-// Alt-Sitzungen aus früheren Versionen entfernen (DSGVO: keine persistente Sitzung)
-try { localStorage.removeItem('curavio_token'); localStorage.removeItem('curavio_user'); } catch {}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-// Keine automatische Anmeldung: Es wird immer zuerst der Login-Bildschirm gezeigt.
+function showLoginScreen() {
+  document.getElementById('bnav').style.display = 'none';
+  document.getElementById('bnav-b').style.display = 'none';
+  document.querySelectorAll('.sc').forEach(s => s.classList.remove('active'));
+  document.getElementById('sc-login').classList.add('active');
+}
+
 window.addEventListener('load', () => {
   initBookDates();
-  setTimeout(() => {
+  setTimeout(async () => {
     document.getElementById('loading').classList.add('hide');
-    // Sicherstellen, dass ausschließlich der Login-Screen aktiv ist
-    document.getElementById('bnav').style.display = 'none';
-    document.getElementById('bnav-b').style.display = 'none';
-    document.querySelectorAll('.sc').forEach(s => s.classList.remove('active'));
-    document.getElementById('sc-login').classList.add('active');
+    // "Angemeldet bleiben": gespeicherte Sitzung fortsetzen, falls vorhanden
+    const savedT = localStorage.getItem('curavio_token');
+    const savedU = localStorage.getItem('curavio_user');
+    if (savedT && savedU) {
+      TOKEN = savedT;
+      try { USER = JSON.parse(savedU); } catch { USER = null; }
+      if (TOKEN && USER) {
+        const me = await api('/auth/me').catch(() => null);
+        if (me && me.error) { doLogout(); return; }            // Token ungültig/abgelaufen
+        if (me && me.consent_accepted !== true) { showConsentModal(false); return; }
+        startApp();
+        return;
+      }
+    }
+    showLoginScreen();
   }, 1200);
 });
 
@@ -1015,8 +1031,15 @@ async function doLogin() {
   const data = await api('/auth/login', { method:'POST', body: { email, password: pw } });
   if (data.error) { err.textContent = data.error; err.style.display = 'block'; return; }
 
-  // Sitzung nur im Arbeitsspeicher – wird beim Schließen/Neuladen verworfen
   TOKEN = data.token; USER = data.user;
+  // "Angemeldet bleiben": nur dann Sitzung auf dem Gerät speichern
+  if (document.getElementById('li-remember')?.checked) {
+    localStorage.setItem('curavio_token', TOKEN);
+    localStorage.setItem('curavio_user', JSON.stringify(USER));
+  } else {
+    localStorage.removeItem('curavio_token');
+    localStorage.removeItem('curavio_user');
+  }
 
   // DSGVO: ohne gültige Einwilligung kein Zugriff auf die App
   if (data.consent_required) { showConsentModal(false); return; }
@@ -2355,6 +2378,7 @@ async function saveMyProfile() {
   });
   if (res.error) { toast('Fehler: ' + res.error); return; }
   USER = { ...USER, name: res.name };
+  if (localStorage.getItem('curavio_token')) localStorage.setItem('curavio_user', JSON.stringify(USER));
   toast('✅ Profil gespeichert');
 }
 

@@ -1,5 +1,5 @@
 // Bei jedem Deploy hochzählen → erzwingt frische App-Version auf allen Geräten
-const CACHE = 'curavio-v4';
+const CACHE = 'curavio-v5';
 
 self.addEventListener('install', e => {
   // Neue Version sofort aktiv schalten, nicht auf Tab-Schließen warten
